@@ -1,0 +1,7 @@
+EnableContentAssist=true
+EnableDeclView=true
+EnableHoverTip=true
+EnableVPG=true
+FortranIncludePaths=\\casimir_gold\n
+FortranModulePaths=\\casimir_gold\n
+eclipse.preferences.version=1

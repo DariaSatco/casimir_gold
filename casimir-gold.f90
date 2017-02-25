@@ -7,15 +7,15 @@ use gold
 implicit none
 
 !counters
-integer:: i,j,k,l,s
+integer:: i,j,k,l
 !---------------------------------------
 !casimir energy variables
 
 integer:: N,stepn
 real(8):: res, rest0, res1
-real(8), allocatable:: fenergy(:), fenergy1(:), fenergy2(:), fenergy3(:), ecasimir(:)
-real(8), allocatable:: ssum(:), ssum1(:), ssum2(:), ssum3(:)
-real(8):: ssum0, ssum01, ssum02, ssum03
+real(8), allocatable:: fenergy(:), fenergy1(:), fenergy2(:), fenergy3(:), fenergy4(:), fenergy5(:), ecasimir(:)
+real(8), allocatable:: ssum(:), ssum1(:), ssum2(:), ssum3(:), ssum4(:), ssum5(:)
+real(8):: ssum0, ssum01
 real(8):: T, wmax
 
 !--------------------------------------------------------------------
@@ -24,33 +24,44 @@ integer,parameter:: ng=310 !rows number in file
 !Palik data table
 real(8):: matrixAu(ng,3)
 !permettivity vector
-real(8), allocatable:: epsAur(:), epsAurDr(:), epsAurMar(:), epsAurGenPl(:)
+real(8), allocatable:: epsAur(:), epsAurDr(:), epsAurMar(:), epsAurGenPl(:), epsAurLD(:), epsAurBB(:)
 !integration results
-real(8):: integralA1,integralA2,integralA3
-!variables needed fo Kr-Kr integral in cspint subroutine
+real(8):: integralA1,integralA2
+!variables needed for Kr-Kr integral in cspint subroutine
 real(8)::funvalAu(ng),SpcoefA(3,ng), exintA(ng), workA(ng)
-!variables for Kr-K integral in qags subroutine
-real(4):: abserrA,abserrA2
-integer(4)::nevalA,ierA,nevalA2,ierA2, ierr
+!variables for Kr-Kr integral in qnc79 subroutine
+integer(4)::nevalA,ierA
 
 real(8):: a(2), b(2)
 
 
 !-----------------------------------------------------------------------
 open(unit=11, file='casimirgold.txt', status='replace')
-!casimirsilicon.txt, casimirgold.txt - files with computational results
+!casimirgold.txt - file with computational results
+
+!title
+write(11,150) 'a, micro m', 'Kramers-Kr', 'Drude', 'Marachevsky', 'Gen_Plasma', &
+'Drude-Lor', 'Bren-Borm', 'T=0 Gen_Pl', 'Casimir'
+
+!-----------------------------------------------------------------------
+open(unit=12, file='eta_to_plot_gold.txt', status='replace')
+!file with eta results
+
+!title
+write(12,150) 'a, micro m', 'Kramers-Kr', 'Drude', 'Marachevsky', 'Gen_Plasma', &
+'Drude-Lor', 'Bren-Borm', 'T=0 Gen_Pl'
 
 !-----------------------------------------------------------------------
 !code for calulation of casimir free energy
 
-open(unit=10, file='resultAu.txt', status='old')
+open(unit=10, file='resultAu_eV.txt', status='old')
 !read matrix from file (gold)
 !1st column - frequencies
 !2nd column - real part of permittivity
 !3rd column - imaginary part of permittivity
 
 do i=1,ng
-read(10,*), (matrixAu(ng+1-i,j),j=1,3)
+read(10,*), (matrixAu(i,j),j=1,3)
 end do
 
 T=300._8
@@ -71,6 +82,10 @@ allocate(ssum2(N))
 allocate(fenergy2(N))
 allocate(ssum3(N))
 allocate(fenergy3(N))
+allocate(ssum4(N))
+allocate(fenergy4(N))
+allocate(ssum5(N))
+allocate(fenergy5(N))
 allocate(ecasimir(N))
 
 model(1)=4
@@ -83,6 +98,8 @@ model(2)=4
     ssum1(j)=0._8
     ssum2(j)=0._8
     ssum3(j)=0._8
+    ssum4(j)=0._8
+    ssum5(j)=0._8
 
     ssum0=0._8
     ssum01=0._8
@@ -98,26 +115,27 @@ model(2)=4
     rest0=(rest0+res)*c/dist**3
 
     k=1
-    wmax=stepn*c/dist
-    w=2*pi*kb*T/h
+    wmax=stepn*cEv/dist
+    w=2*pi*kb*T/(h*eV)
     do while (w.le.wmax)
     k=k+1
-    w=2*k*pi*kb*T/h
+    w=2*k*pi*kb*T/(h*eV)
     end do
 
 print*, 'k=', k
-!k=100
 
 allocate(epsAur(k))
 allocate(epsAurDr(k))
 allocate(epsAurMar(k))
 allocate(epsAurGenPl(k))
+allocate(epsAurLD(k))
+allocate(epsAurBB(k))
 
         !calculate casimir energy
         do i=1,k
         !do-cycle for frequencies
 
-            w=2*i*pi*kb*T/h
+            w=2*i*pi*kb*T/(h*eV)
             !w - Matsubara frequency
             freqA=w
 
@@ -125,25 +143,24 @@ allocate(epsAurGenPl(k))
     call qnc79(drude_to_int, 0.0_8, matrixAu(1,1), 1.0e-3_8, integralA1, ierA, nevalA)
 
     !builds vector to integrate from the Palik data
-        do k=1,ng
-        funvalAu(k)=matrixAu(k,3)*matrixAu(k,1)/(matrixAu(k,1)**2+freqA**2)
+        do l=1,ng
+        funvalAu(l)=matrixAu(l,3)*matrixAu(l,1)/(matrixAu(l,1)**2+freqA**2)
         end do
     !integrates the vector of data
     call cspint(ng, matrixAu(1:ng,1), funvalAu, matrixAu(1,1), matrixAu(ng,1), SpcoefA, exintA, workA, integralA2)
 
-    !integrates the oscillator-function
-    call monte_carlo(oscil_to_int, matrixAu(ng,1), matrixAu(ng,1)*1.0e4_8, 1000000, integralA3)
-
-
     !Kr-Kr formula for permittivity
-    epsAur(i)=(integralA1+integralA2+integralA3)*2/pi+1
+    epsAur(i)=(integralA1+integralA2)*2/pi + 1.0
 
-    epsAurDr(i)=Drude(w,parAproxIm)
+    epsAurDr(i)=Drude(w,parRakic_LD)
 
     epsAurMar(i)=epsMar(w)
 
-    epsAurGenPl(i)=Gen_Plasma(w)
+    epsAurGenPl(i)=Gen_Plasma(w, parMost, gAu, gammaAu, wAu)
 
+    epsAurLD(i)=Lorentz_Drude(w, parRakic_LD, fR*wpR**2, gammaR, wR)
+
+    epsAurBB(i)=Brendel_Bormann(w, parRakic_BB, fRb*wpR**2, gammaRb, wRb, sigmaRb)
 !-----------------------------------------------------------------------
     !calculate casimir (Kramers-Kr)
     eps(1)=epsAur(i)
@@ -196,35 +213,57 @@ allocate(epsAurGenPl(k))
 
             ssum3(j)=ssum3(j)+res
 
-     end do
+!---------------------------------------------------------------------
+
+!calculate casimir (Lorentz-Drude)
+    eps(1)=epsAurLD(i)
+    eps(2)=epsAurLD(i)
+    call trapzd(to_int,1.0e-8_8,1._8,res)
+
+            ssum4(j)=ssum4(j)+res
+
+    call trapzd(to_int1,0._8,1._8,res)
+
+            ssum4(j)=ssum4(j)+res
+
+!---------------------------------------------------------------------
+
+!calculate casimir (Brendel-Bormann)
+    eps(1)=epsAurBB(i)
+    eps(2)=epsAurBB(i)
+    call trapzd(to_int,1.0e-8_8,1._8,res)
+
+            ssum5(j)=ssum5(j)+res
+
+    call trapzd(to_int1,0._8,1._8,res)
+
+            ssum5(j)=ssum5(j)+res
+
+    end do
 !*********
 !ssum0 (Drude,Marachevsky,Kramers-Kr)
     ssum0=0._8
-    call trapzd(zero_sum_int_Dr,0._8,1._8, res)
-    !call qnc79(zero_sum_int_Dr, 0._8, 1._8, 1.0e-3_8, res, ierr, s)
+    !call trapzd(zero_sum_int_Dr, 0._8, 1._8, res)
+    call qnc79(zero_sum_int_Dr, 0._8, 1._8, 1.0e-3_8, res, ierA, nevalA)
 
             ssum0=ssum0+res
 
-    call trapzd(zero_sum_int1_Dr, 0._8,1._8, res)
-    !call qnc79(zero_sum_int1_Dr, 0._8, 1._8, 1.0e-3_8, res, ierr, s)
+    !call trapzd(zero_sum_int1_Dr, 0._8, 1._8, res)
+    call qnc79(zero_sum_int1_Dr, 0._8, 1._8, 1.0e-3_8, res, ierA, nevalA)
 
             ssum0=ssum0+res
-            print*, 'ssum0=', ssum0
 
- !ssum01 (Plasma)
+!ssum01 (Plasma)
    ssum01=0._8
-   call trapzd(zero_sum_int_Pl, 0.1_8, 1._8, res1)
-   print*, res1
-   !call qnc79(zero_sum_int_Pl, 0._8, 1._8, 1.0e-3_8, res, ierr, s)
+   !call trapzd(zero_sum_int_Pl, 0._8, 1._8, res1)
+   call qnc79(zero_sum_int_Pl, 0._8, 1._8, 1.0e-3_8, res1, ierA, nevalA)
 
             ssum01=ssum01+res1
 
-    call trapzd(zero_sum_int1_Pl, 0.1_8,1._8, res1)
-    print*, res1
-    !call qnc79(zero_sum_int1_Pl, 0._8, 1._8, 1.0e-3_8, res, ierr, s)
+   !call trapzd(zero_sum_int1_Pl, 0._8, 1._8, res1)
+   call qnc79(zero_sum_int1_Pl, 0._8, 1._8, 1.0e-3_8, res1, ierA, nevalA)
 
             ssum01=ssum01+res1
-            print*, 'ssum01=', ssum01
 
 !****************
 ! Kramers-Kr
@@ -235,26 +274,44 @@ fenergy1(j)=1.602e-19*kb*T/(2*pi*dist**2)*(0.5*ssum0+ssum1(j))
 fenergy2(j)=1.602e-19*kb*T/(2*pi*dist**2)*(0.5*ssum0+ssum2(j))
 ! Generalized plasma
 fenergy3(j)=1.602e-19*kb*T/(2*pi*dist**2)*(0.5*ssum01+ssum3(j))
+! Drude-Lorentz
+fenergy4(j)=1.602e-19*kb*T/(2*pi*dist**2)*(0.5*ssum0+ssum4(j))
+! Brendel-Bormann
+fenergy5(j)=1.602e-19*kb*T/(2*pi*dist**2)*(0.5*ssum0+ssum5(j))
 
 rest0=1.602e-19*h*rest0/(2*pi)**2
 
 ecasimir(j)=1.602e-19*(pi)**2*h*c/(720*dist**3)
 
-write(11,*) dist*1.0e7, abs((fenergy(j))*1.0e9), abs((fenergy1(j))*1.0e9), &
-abs((fenergy2(j))*1.0e9), abs((fenergy3(j))*1.0e9), abs(rest0)*1.0e9, ecasimir(j)*1.0e9
-!*********
+!write data in casimirgold.txt
+100 format(10(f15.3))
+150 format(10(A15))
+
+!values
+write(11,100) dist*1.0e6, abs((fenergy(j))*1.0e9), abs((fenergy1(j))*1.0e9), &
+abs((fenergy2(j))*1.0e9), abs((fenergy3(j))*1.0e9), abs((fenergy4(j))*1.0e9), &
+abs((fenergy5(j))*1.0e9), abs(rest0)*1.0e9, ecasimir(j)*1.0e9
+
+
+!want to write eta = free energy / casimir result
+write(12,100) dist*1.0e6, abs(fenergy(j))/ecasimir(j), abs(fenergy1(j))/ecasimir(j), &
+abs(fenergy2(j))/ecasimir(j), abs(fenergy3(j))/ecasimir(j), abs(fenergy4(j))/ecasimir(j), &
+abs(fenergy5(j))/ecasimir(j), abs(rest0)/ecasimir(j)
+
+
+!***********************************************************************************************
 
 deallocate(epsAur)
 deallocate(epsAurDr)
 deallocate(epsAurMar)
 deallocate(epsAurGenPl)
+deallocate(epsAurLD)
+deallocate(epsAurBB)
 
     end do
 
 
 !**********************************************************************************************
-
-
 
 deallocate(ssum)
 deallocate(fenergy)
@@ -264,9 +321,17 @@ deallocate(ssum2)
 deallocate(fenergy2)
 deallocate(ssum3)
 deallocate(fenergy3)
+deallocate(ssum4)
+deallocate(fenergy4)
+deallocate(ssum5)
+deallocate(fenergy5)
+deallocate(ecasimir)
 
 close(11)
 close(10)
+close(12)
+
+print*, 'Done!'
 
 end program
 

@@ -6,14 +6,15 @@ module dopcasimir
 	! w - Matsubara frequency
 	! dist - the distance between interacting plates
     real(8), public :: eps(3)
-	! eps - dielectric permettivity vector
-        ! eps(1),eps(2) describes materials
+	! eps - dielectric permittivity vector
+    ! eps(1),eps(2) describes materials
 	! eps(3) describes gap permettivity
     real(8), parameter :: pi=3.1415926
     real(8), parameter :: eV=1.519e15  ! rad/s
-    real(8), parameter :: kb=8.617e-5  ! eV/K kb=1.38e-23 J/K  Boltzman constant
-    real(8), parameter :: h=6.585e-16  ! eV*s h=1.054e-34J*s  Plank constant
-    real(8), parameter :: c=299792458._8 ! c - velocity of light
+    real(8), parameter :: kb=8.617e-5  ! eV/K  Boltzman constant (kb=1.38e-23 J/K)
+    real(8), parameter :: h=6.585e-16  ! eV*s  Plank constant (h=1.054e-34J*s)
+    real(8), parameter :: c=299792458._8 ! c - velocity of light m/s
+    real(8), parameter :: cEv=19.746e-8 ! eV*m
 
     integer, public :: model(2)
 
@@ -24,7 +25,9 @@ contains
 	function eqf(a,x,y)
 	! function needed to integrate in formula for Casimir free energy 
 	! x=dist*r, y=w*dist/c change the variables to dimensioness
-        ! the constants in front of the integral: rdr --> 1/dist**2 xdx;  dw --> c/dist
+    ! the constants in front of the integral: rdr --> 1/dist**2 xdx;  dw --> c/dist
+    ! w in eV
+    ! c in eV*m (defined as cEv in module parameters)
 
 	real(8):: a,x,q,y,rTMn(2),rTEn(2),eqf
 
@@ -33,7 +36,7 @@ contains
 		rTEn=rTE(x/a,y)
 !calculate the TE Frenel coefficient for the concrete dist as a function of x,y
 			
-		q=sqrt(x**2+(a*y/c)**2)
+		q=sqrt(x**2+(a*y/cEv)**2)
 		eqf=x*(log(1._8-rTMn(1)*rTMn(2)*exp(-2.*q))+log(1._8-rTEn(1)*rTEn(2)*exp(-2.*q)))
 
 					
@@ -55,11 +58,11 @@ contains
         case (1)
         epsmodel_func(i)=epsMar(x)
         case (2)
-        epsmodel_func(i)=Drude(x, parMost)
+        epsmodel_func(i)=Drude(x, parRakic_LD)
         case (3)
         epsmodel_func(i)=epsSil_art(x)
         case(4)
-        epsmodel_func(i)=Gen_Plasma(x)
+        epsmodel_func(i)=Gen_Plasma(x, parMost, gAu, gammaAu, wAu)
     end select
 
     end do
@@ -82,7 +85,7 @@ contains
     a=dist
 	q=sqrt(arg(1)**2+arg(2)**2)
 
-    epsmodel=epsmodel_func(arg(2)*c/a)
+    epsmodel=epsmodel_func(arg(2)*cEv/a)
 
 	!need to write rTE(arg1,arg2), rTM(arg1,arg2)
 	do i=1,2
@@ -119,7 +122,8 @@ contains
 	
 	function to_int(arg)
 	!integrable function for nonzero temperatures - function of one argument - x <--> k-frequency
-        !interval [0,1]
+    !interval [0,1]
+    ! w in eV
 
 	real(8):: arg, to_int
 
@@ -131,7 +135,8 @@ contains
 
 	function to_int1(arg)
 	!integrable function for nonzero temperatures
-        !make change of interval for integration [1, Inf) --> (0,1]
+    !make change of interval for integration [1, Inf) --> (0,1]
+    ! w in eV
 
 	real(8):: arg, to_int1
 	
@@ -149,15 +154,17 @@ contains
 
 	function rTM(kf,freq)
 	!the Frenel reflection coeffitient for TM-field
+	! freq in eV
+    ! kf in 1/m
 
 	  real(8):: kf,freq, rTM(2),q,k(2)
 	  integer:: i
 
 
-		q=sqrt(kf**2+(freq/c)**2)
+		q=sqrt(kf**2+(freq/cEv)**2)
 
 		do i=1,2
-			k(i)=sqrt(kf**2+eps(i)*(freq/c)**2)
+			k(i)=sqrt(kf**2+eps(i)*(freq/cEv)**2)
 			rTM(i)=(eps(i)*q-k(i))/(eps(i)*q+k(i))
 		end do
 
@@ -168,15 +175,17 @@ contains
 !--------------------------------------------------------------------------------
 
 	function rTE(kf,freq)
-	! the Frenel reflection coeffitien for TE-field
+	! the Frenel reflection coeffitient for TE-field
+	! freq in eV
+	! kf in 1/m
 
 	  real(8):: kf,freq,rTE(2),q,k(2)
 	  integer:: i
 
 	  
-		q=sqrt(kf**2+(freq/c)**2)
+		q=sqrt(kf**2+(freq/cEv)**2)
 		do i=1,2
-			k(i)=sqrt(kf**2+eps(i)*(freq/c)**2)
+			k(i)=sqrt(kf**2+eps(i)*(freq/cEv)**2)
 			rTE(i)=(q-k(i))/(q+k(i))
 		end do
 	  
