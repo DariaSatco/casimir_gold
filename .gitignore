@@ -4,6 +4,7 @@
 .cproject
 .project
 *.eps
+*.jpg
 Debug/*
 
 /Debug/

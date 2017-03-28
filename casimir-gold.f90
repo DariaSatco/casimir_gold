@@ -3,27 +3,39 @@ program casimir_gold
 use dopcasimir
 use silicon
 use gold
+use force_module
 
 implicit none
 
 !counters
 integer:: i,j,k,l
 !---------------------------------------
-!casimir energy variables
 
 integer:: N,stepn
-real(8):: res, rest0, res1
-real(8), allocatable:: fenergy(:), fenergy1(:), fenergy2(:), fenergy3(:), fenergy4(:), fenergy5(:), ecasimir(:)
-real(8), allocatable:: ssum(:), ssum1(:), ssum2(:), ssum3(:), ssum4(:), ssum5(:)
-real(8):: ssum0, ssum01
+!N - number of distance points
+!stepn - number of Matsubara frequencies
 real(8):: T, wmax
+!T - temerature
+real(8):: res, rest0, res1
+
+!casimir energy (1st column)/force(2nd column) variables
+real(8), allocatable:: casimir_res_kk(:,:)
+real(8), allocatable:: casimir_res_dr(:,:)
+real(8), allocatable:: casimir_res_pl(:,:)
+real(8), allocatable:: casimir_res_ldr(:,:)
+real(8), allocatable:: casimir_res_bb(:,:)
+real(8), allocatable:: casimir_res_mar(:,:)
+real(8), allocatable:: casimir_res_original(:,:)
+
+!zero summands
+real(4):: sume_dr, sume_pl, sumf_dr, sumf_pl
 
 !--------------------------------------------------------------------
-!gold permettivity variables
-integer,parameter:: ng=310 !rows number in file
-!Palik data table
+!gold permittivity variables
+integer,parameter:: ng=663 !rows number in file
+!experimental data table
 real(8):: matrixAu(ng,3)
-!permettivity vector
+!permittivity vectors
 real(8), allocatable:: epsAur(:), epsAurDr(:), epsAurMar(:), epsAurGenPl(:), epsAurLD(:), epsAurBB(:)
 !integration results
 real(8):: integralA1,integralA2
@@ -31,6 +43,9 @@ real(8):: integralA1,integralA2
 real(8)::funvalAu(ng),SpcoefA(3,ng), exintA(ng), workA(ng)
 !variables for Kr-Kr integral in qnc79 subroutine
 integer(4)::nevalA,ierA
+!variables for qagi
+real(4):: abserr, result
+integer(4):: neval, ier
 
 real(8):: a(2), b(2)
 
@@ -43,8 +58,16 @@ open(unit=11, file='casimirgold.txt', status='replace')
 write(11,150) 'a, micro m', 'Kramers-Kr', 'Drude', 'Marachevsky', 'Gen_Plasma', &
 'Drude-Lor', 'Bren-Borm', 'T=0 Gen_Pl', 'Casimir'
 
+!-------------------------------------------------------------------------
+
+open(unit=13, file='casimir_force_gold.txt', status='replace')
+!casimir_force_gold.txt - file with computational results
+
+write(13,150) 'a, micro m', 'Kramers-Kr', 'Drude', 'Marachevsky', 'Gen_Plasma', &
+'Drude-Lor', 'Bren-Borm', 'Casimir'
+
 !-----------------------------------------------------------------------
-open(unit=12, file='eta_to_plot_gold.txt', status='replace')
+open(unit=12, file='eta_to_plot_gold_energy.txt', status='replace')
 !file with eta results
 
 !title
@@ -52,16 +75,26 @@ write(12,150) 'a, micro m', 'Kramers-Kr', 'Drude', 'Marachevsky', 'Gen_Plasma', 
 'Drude-Lor', 'Bren-Borm', 'T=0 Gen_Pl'
 
 !-----------------------------------------------------------------------
+open(unit=14, file='eta_to_plot_gold_force.txt', status='replace')
+!file with eta results
+
+!title
+write(14,150) 'a, micro m', 'Kramers-Kr', 'Drude', 'Marachevsky', 'Gen_Plasma', &
+'Drude-Lor', 'Bren-Borm'
+
+!-----------------------------------------------------------------------
 !code for calulation of casimir free energy
 
-open(unit=10, file='resultAu_eV.txt', status='old')
-!read matrix from file (gold)
+open(unit=15, file='gold_eps_im_re_ev+Olmon.txt', status='old')
+!read matrix from file
 !1st column - frequencies
 !2nd column - real part of permittivity
 !3rd column - imaginary part of permittivity
 
+read(15,*)
+
 do i=1,ng
-read(10,*), (matrixAu(i,j),j=1,3)
+read(15,*), (matrixAu(i,j),j=1,3)
 end do
 
 T=300._8
@@ -72,21 +105,22 @@ eps(3)=1._8
 
 print *, 'type number of points '
 read *, N
-! N - number of points on the plot
+!N - number of points at the plot
 
-allocate(ssum(N))
-allocate(fenergy(N))
-allocate(ssum1(N))
-allocate(fenergy1(N))
-allocate(ssum2(N))
-allocate(fenergy2(N))
-allocate(ssum3(N))
-allocate(fenergy3(N))
-allocate(ssum4(N))
-allocate(fenergy4(N))
-allocate(ssum5(N))
-allocate(fenergy5(N))
-allocate(ecasimir(N))
+allocate(casimir_res_kk(N,2))
+casimir_res_kk = 0.0
+allocate(casimir_res_mar(N,2))
+casimir_res_mar = 0.0
+allocate(casimir_res_dr(N,2))
+casimir_res_dr = 0.0
+allocate(casimir_res_pl(N,2))
+casimir_res_pl = 0.0
+allocate(casimir_res_ldr(N,2))
+casimir_res_ldr = 0.0
+allocate(casimir_res_bb(N,2))
+casimir_res_bb = 0.0
+allocate(casimir_res_original(N,2))
+casimir_res_original = 0.0
 
 model(1)=4
 model(2)=4
@@ -94,15 +128,11 @@ model(2)=4
     do j=1,N
     !do-cycle for distance
     dist=1.0e-7*j
-    ssum(j)=0._8
-    ssum1(j)=0._8
-    ssum2(j)=0._8
-    ssum3(j)=0._8
-    ssum4(j)=0._8
-    ssum5(j)=0._8
 
-    ssum0=0._8
-    ssum01=0._8
+    sume_dr=0.0
+    sume_pl=0.0
+    sumf_dr=0.0
+    sumf_pl=0.0
 
     !first calculate zero-temperature casimir energy
     a=(/0._8, 0._8/)
@@ -152,154 +182,198 @@ allocate(epsAurBB(k))
     !Kr-Kr formula for permittivity
     epsAur(i)=(integralA1+integralA2)*2/pi + 1.0
 
-    epsAurDr(i)=Drude(w,parRakic_LD)
+    !create vectors of permittivity values within different models
+    !Drude model
+    epsAurDr(i)=Drude(w,parAproxIm)
 
+    !Marachevsky
     epsAurMar(i)=epsMar(w)
 
+    !Generalized plasma (Mostepanenko)
     epsAurGenPl(i)=Gen_Plasma(w, parMost, gAu, gammaAu, wAu)
 
+    !Lorentz-Drude model (Rakic)
     epsAurLD(i)=Lorentz_Drude(w, parRakic_LD, fR*wpR**2, gammaR, wR)
 
+    !Brenedel-Bormann (Rakic)
     epsAurBB(i)=Brendel_Bormann(w, parRakic_BB, fRb*wpR**2, gammaRb, wRb, sigmaRb)
 !-----------------------------------------------------------------------
+
     !calculate casimir (Kramers-Kr)
+    !fix dielectric model
     eps(1)=epsAur(i)
     eps(2)=epsAur(i)
-    call trapzd(to_int,0._8,1._8,res)
 
-            ssum(j)=ssum(j)+res
+    !calculate energy
+    call qagi( to_int, 0.0, 1, 1.0e-5, 1.0e-5, result, abserr, neval, ier )
+    casimir_res_kk(j,1)=casimir_res_kk(j,1) + result
 
-    call trapzd(to_int1,0._8,1._8,res)
-
-            ssum(j)=ssum(j)+res
-
+    !calculate force
+    call qagi( lif_to_int, 0.0, 1, 1.0e-10, 1.0e-8, result, abserr, neval, ier )
+    casimir_res_kk(j,2)=casimir_res_kk(j,2) + result
 
 !-----------------------------------------------------------------------
 
     !calculate casimir (Drude)
+    !fix dielecric model
     eps(1)=epsAurDr(i)
     eps(2)=epsAurDr(i)
-    call trapzd(to_int,0._8,1._8,res)
 
-            ssum1(j)=ssum1(j)+res
+    !calculate energy
+    call qagi( to_int, 0.0, 1, 1.0e-5, 1.0e-5, result, abserr, neval, ier )
+    casimir_res_dr(j,1)=casimir_res_dr(j,1) + result
 
-    call trapzd(to_int1,0._8,1._8,res)
-
-            ssum1(j)=ssum1(j)+res
+    !calculate force
+    call qagi( lif_to_int, 0.0, 1, 1.0e-10, 1.0e-8, result, abserr, neval, ier )
+    casimir_res_dr(j,2)=casimir_res_dr(j,2) + result
 
 !----------------------------------------------------------------------
 
     !calculate casimir (Marachevsky)
+    !fix dielectric model
     eps(1)=epsAurMar(i)
     eps(2)=epsAurMar(i)
-    call trapzd(to_int,0._8,1._8,res)
 
-            ssum2(j)=ssum2(j)+res
+    !calculate energy
+    call qagi( to_int, 0.0, 1, 1.0e-5, 1.0e-5, result, abserr, neval, ier )
+    casimir_res_mar(j,1)=casimir_res_mar(j,1) + result
 
-    call trapzd(to_int1,0._8,1._8,res)
-
-            ssum2(j)=ssum2(j)+res
+    !calculate force
+    call qagi( lif_to_int, 0.0, 1, 1.0e-10, 1.0e-8, result, abserr, neval, ier )
+    casimir_res_mar(j,2)=casimir_res_mar(j,2) + result
 
 !----------------------------------------------------------------------
 
     !calculate casimir (Generalized plasma)
+    !fix dielectric model
     eps(1)=epsAurGenPl(i)
     eps(2)=epsAurGenPl(i)
-    call trapzd(to_int,1.0e-8_8,1._8,res)
 
-            ssum3(j)=ssum3(j)+res
+    !calculate energy
+    call qagi( to_int, 0.0, 1, 1.0e-5, 1.0e-5, result, abserr, neval, ier )
+    casimir_res_pl(j,1)=casimir_res_pl(j,1) + result
 
-    call trapzd(to_int1,0._8,1._8,res)
-
-            ssum3(j)=ssum3(j)+res
+    !calculate force
+    call qagi( lif_to_int, 0.0, 1, 1.0e-10, 1.0e-8, result, abserr, neval, ier )
+    casimir_res_pl(j,2)=casimir_res_pl(j,2) + result
 
 !---------------------------------------------------------------------
 
-!calculate casimir (Lorentz-Drude)
+    !calculate casimir (Lorentz-Drude)
+    !fix dielectric model
     eps(1)=epsAurLD(i)
     eps(2)=epsAurLD(i)
-    call trapzd(to_int,1.0e-8_8,1._8,res)
 
-            ssum4(j)=ssum4(j)+res
+    !calculate energy
+    call qagi( to_int, 0.0, 1, 1.0e-5, 1.0e-5, result, abserr, neval, ier )
+    casimir_res_ldr(j,1)=casimir_res_ldr(j,1) + result
 
-    call trapzd(to_int1,0._8,1._8,res)
-
-            ssum4(j)=ssum4(j)+res
+    !calculate force
+    call qagi( lif_to_int, 0.0, 1, 1.0e-10, 1.0e-8, result, abserr, neval, ier )
+    casimir_res_ldr(j,2)=casimir_res_ldr(j,2) + result
 
 !---------------------------------------------------------------------
 
-!calculate casimir (Brendel-Bormann)
+    !calculate casimir (Brendel-Bormann)
+    !fix dielectric model
     eps(1)=epsAurBB(i)
     eps(2)=epsAurBB(i)
-    call trapzd(to_int,1.0e-8_8,1._8,res)
 
-            ssum5(j)=ssum5(j)+res
+    !calculate energy
+    call qagi( to_int, 0.0, 1, 1.0e-5, 1.0e-5, result, abserr, neval, ier )
+    casimir_res_bb(j,1)=casimir_res_bb(j,1) + result
 
-    call trapzd(to_int1,0._8,1._8,res)
-
-            ssum5(j)=ssum5(j)+res
+    !calculate force
+    call qagi( lif_to_int, 0.0, 1, 1.0e-10, 1.0e-8, result, abserr, neval, ier )
+    casimir_res_bb(j,2)=casimir_res_bb(j,2) + result
 
     end do
-!*********
+
+!****************************************************
+!we calculated only 1,...,N summands, let's calculate zero summand
+
+!energy----------------------------------------
 !ssum0 (Drude,Marachevsky,Kramers-Kr)
-    ssum0=0._8
-    !call trapzd(zero_sum_int_Dr, 0._8, 1._8, res)
-    call qnc79(zero_sum_int_Dr, 0._8, 1._8, 1.0e-3_8, res, ierA, nevalA)
 
-            ssum0=ssum0+res
-
-    !call trapzd(zero_sum_int1_Dr, 0._8, 1._8, res)
-    call qnc79(zero_sum_int1_Dr, 0._8, 1._8, 1.0e-3_8, res, ierA, nevalA)
-
-            ssum0=ssum0+res
+    call qagi( zero_sum_Dr, 0.0, 1, 1.0e-5, 1.0e-5, sume_dr, abserr, neval, ier )
 
 !ssum01 (Plasma)
-   ssum01=0._8
-   !call trapzd(zero_sum_int_Pl, 0._8, 1._8, res1)
-   call qnc79(zero_sum_int_Pl, 0._8, 1._8, 1.0e-3_8, res1, ierA, nevalA)
 
-            ssum01=ssum01+res1
+    call qagi( zero_sum_int_Pl, 0.0, 1, 1.0e-5, 1.0e-5, sume_pl, abserr, neval, ier )
 
-   !call trapzd(zero_sum_int1_Pl, 0._8, 1._8, res1)
-   call qnc79(zero_sum_int1_Pl, 0._8, 1._8, 1.0e-3_8, res1, ierA, nevalA)
+!force----------------------------------------
+!zero summand for force (Drude)
+    call qagi( zero_sum_force_Dr, 0.0, 1, 1.0e-10, 1.0e-8, sumf_dr, abserr, neval, ier )
 
-            ssum01=ssum01+res1
+!zero summand for force (Plasma)
+    call qagi( zero_sum_int_force_Pl, 0.0, 1, 1.0e-10, 1.0e-8, sumf_pl, abserr, neval, ier )
 
-!****************
+!***************************************************
+!multiply integrational energy results by necessary constants
 ! Kramers-Kr
-fenergy(j)=1.602e-19*kb*T/(2*pi*dist**2)*(0.5*ssum0+ssum(j))
+casimir_res_kk(j,1)=1.602e-19*kb*T/(2*pi*dist**2)*(0.5*sume_dr + casimir_res_kk(j,1))
 ! Drude
-fenergy1(j)=1.602e-19*kb*T/(2*pi*dist**2)*(0.5*ssum0+ssum1(j))
+casimir_res_dr(j,1)=1.602e-19*kb*T/(2*pi*dist**2)*(0.5*sume_dr + casimir_res_dr(j,1))
 ! Marachevsky
-fenergy2(j)=1.602e-19*kb*T/(2*pi*dist**2)*(0.5*ssum0+ssum2(j))
+casimir_res_mar(j,1)=1.602e-19*kb*T/(2*pi*dist**2)*(0.5*sume_dr + casimir_res_mar(j,1))
 ! Generalized plasma
-fenergy3(j)=1.602e-19*kb*T/(2*pi*dist**2)*(0.5*ssum01+ssum3(j))
+casimir_res_pl(j,1)=1.602e-19*kb*T/(2*pi*dist**2)*(0.5*sume_pl + casimir_res_pl(j,1))
 ! Drude-Lorentz
-fenergy4(j)=1.602e-19*kb*T/(2*pi*dist**2)*(0.5*ssum0+ssum4(j))
+casimir_res_ldr(j,1)=1.602e-19*kb*T/(2*pi*dist**2)*(0.5*sume_dr + casimir_res_ldr(j,1))
 ! Brendel-Bormann
-fenergy5(j)=1.602e-19*kb*T/(2*pi*dist**2)*(0.5*ssum0+ssum5(j))
+casimir_res_bb(j,1)=1.602e-19*kb*T/(2*pi*dist**2)*(0.5*sume_dr + casimir_res_bb(j,1))
 
 rest0=1.602e-19*h*rest0/(2*pi)**2
 
-ecasimir(j)=1.602e-19*(pi)**2*h*c/(720*dist**3)
+casimir_res_original(j,1)=-1.602e-19*(pi)**2*h*c/(720*dist**3)
 
-!write data in casimirgold.txt
+!write energy data in casimirgold.txt
 100 format(10(f15.3))
 150 format(10(A15))
 
-!values
-write(11,100) dist*1.0e6, abs((fenergy(j))*1.0e9), abs((fenergy1(j))*1.0e9), &
-abs((fenergy2(j))*1.0e9), abs((fenergy3(j))*1.0e9), abs((fenergy4(j))*1.0e9), &
-abs((fenergy5(j))*1.0e9), abs(rest0)*1.0e9, ecasimir(j)*1.0e9
-
+write(11,100) dist*1.0e6, abs((casimir_res_kk(j,1))*1.0e9), abs((casimir_res_dr(j,1))*1.0e9), &
+abs((casimir_res_mar(j,1))*1.0e9), abs((casimir_res_pl(j,1))*1.0e9), abs((casimir_res_ldr(j,1))*1.0e9), &
+abs((casimir_res_bb(j,1))*1.0e9), abs(rest0)*1.0e9, abs(casimir_res_original(j,1)*1.0e9)
 
 !want to write eta = free energy / casimir result
-write(12,100) dist*1.0e6, abs(fenergy(j))/ecasimir(j), abs(fenergy1(j))/ecasimir(j), &
-abs(fenergy2(j))/ecasimir(j), abs(fenergy3(j))/ecasimir(j), abs(fenergy4(j))/ecasimir(j), &
-abs(fenergy5(j))/ecasimir(j), abs(rest0)/ecasimir(j)
+write(12,100) dist*1.0e6, casimir_res_kk(j,1)/casimir_res_original(j,1),&
+casimir_res_dr(j,1)/casimir_res_original(j,1), &
+casimir_res_pl(j,1)/casimir_res_original(j,1), &
+casimir_res_ldr(j,1)/casimir_res_original(j,1), &
+casimir_res_bb(j,1)/casimir_res_original(j,1), &
+rest0/casimir_res_original(j,1)
 
 
 !***********************************************************************************************
+!multiply integrational force results by necessary constants
+! Kramers-Kr
+casimir_res_kk(j,2)=-1.602e-19*kb*T/(pi*dist**3)*(0.5*sumf_dr + casimir_res_kk(j,2))
+! Drude
+casimir_res_dr(j,2)=-1.602e-19*kb*T/(pi*dist**3)*(0.5*sumf_dr + casimir_res_dr(j,2))
+! Marachevsky
+casimir_res_mar(j,2)=-1.602e-19*kb*T/(pi*dist**3)*(0.5*sumf_dr + casimir_res_mar(j,2))
+! Generalized plasma
+casimir_res_pl(j,2)=-1.602e-19*kb*T/(pi*dist**3)*(0.5*sumf_pl + casimir_res_pl(j,2))
+! Drude-Lorentz
+casimir_res_ldr(j,2)=-1.602e-19*kb*T/(pi*dist**3)*(0.5*sumf_dr + casimir_res_ldr(j,2))
+! Brendel-Bormann
+casimir_res_bb(j,2)=-1.602e-19*kb*T/(pi*dist**3)*(0.5*sumf_dr + casimir_res_bb(j,2))
+
+!Casimir original result
+casimir_res_original(j,2)=-1.602e-19*(pi)**2*h*c/(240*dist**4)
+
+write(13,100) dist*1.0e6, casimir_res_kk(j,2), casimir_res_dr(j,2), &
+casimir_res_mar(j,2), casimir_res_pl(j,2), casimir_res_ldr(j,2), &
+casimir_res_bb(j,2), casimir_res_original(j,2)
+
+!want to write eta = free energy / casimir result
+write(14,100) dist*1.0e6, casimir_res_kk(j,2)/casimir_res_original(j,2),&
+casimir_res_dr(j,2)/casimir_res_original(j,2), &
+casimir_res_mar(j,2)/casimir_res_original(j,2), &
+casimir_res_pl(j,2)/casimir_res_original(j,2), &
+casimir_res_ldr(j,2)/casimir_res_original(j,2), &
+casimir_res_bb(j,2)/casimir_res_original(j,2)
+
 
 deallocate(epsAur)
 deallocate(epsAurDr)
@@ -313,23 +387,19 @@ deallocate(epsAurBB)
 
 !**********************************************************************************************
 
-deallocate(ssum)
-deallocate(fenergy)
-deallocate(ssum1)
-deallocate(fenergy1)
-deallocate(ssum2)
-deallocate(fenergy2)
-deallocate(ssum3)
-deallocate(fenergy3)
-deallocate(ssum4)
-deallocate(fenergy4)
-deallocate(ssum5)
-deallocate(fenergy5)
-deallocate(ecasimir)
+deallocate(casimir_res_kk)
+deallocate(casimir_res_dr)
+deallocate(casimir_res_mar)
+deallocate(casimir_res_ldr)
+deallocate(casimir_res_bb)
+deallocate(casimir_res_original)
+
 
 close(11)
 close(10)
 close(12)
+close(13)
+close(14)
 
 print*, 'Done!'
 

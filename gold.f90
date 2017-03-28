@@ -20,7 +20,7 @@ real(8), dimension(2), parameter:: parRakic_LD=(/7.87, 0.053/) !eV
 !Rakic Brendel-Bormann
 real(8), dimension(2), parameter:: parRakic_BB=(/7.92, 0.05/) !eV
 !approximation data of the imaginary part (Palik)
-real(8), dimension(2), parameter:: parAproxIm=(/6.62, 0.089/) !eV
+real(8), dimension(2), parameter:: parAproxIm=(/9.0, 0.024/) !eV
 !approximation data of the real part (Palik)
 real(8), dimension(2), parameter:: parAproxRe=(/7.93, 0.08/) !eV
 
@@ -198,7 +198,7 @@ function drude_to_int(x)
 
 real(8):: x, drude_to_int, param(2)
 
-param=parRakic_LD
+param=parAproxIm
 drude_to_int=param(1)**2*param(2)/((x**2+param(2)**2)*(x**2+freqA**2))
 
 end function
@@ -427,30 +427,34 @@ end function
 !*****************************************
 
 !-------------------------------------------------
-function zero_sum1(a,x)
+function zero_sum_Dr(x)
+!does not depend on distance if we have done change x --> dist*x
 !Drude, Marachevsky, Kramers-Kr
 
-real(8):: zero_sum1, x
-real(8):: rTm, rTe, a
+real(4):: zero_sum_Dr, x
+real(4):: rTm, rTe
 
-rTe=0._8
-rTm=1._8
+rTe=0.0
+rTm=1.0
 
-zero_sum1=x*(log(1._8-rTm**2*exp(-2.*x))+log(1._8-rTe**2*exp(-2.*x)))
+if (x.eq.0.0) then
+    zero_sum_Dr = 0.0
+    else
+    zero_sum_Dr = x*(log(1._8-rTm**2*exp(-2.*x))+log(1._8-rTe**2*exp(-2.*x)))
+endif
 
 end function
 
 !----------------------------------------------------------------------
 
-function zero_sum2(a,x)
+function zero_sum_Pl(a,x)
 !Generalized plama-like model
 
-real(8):: zero_sum2, x
+real(4):: zero_sum_Pl, x
 real(8):: rTm, rTe, a, log1, log2
 real(8):: wp,cEv
-integer:: k
 
-cEv=19.746e-6 ! eV*s
+cEv=19.746e-8 ! eV*s
 wp=parMost(1)
 
 rTm=1._8
@@ -460,74 +464,27 @@ rTe=((x/a)-sqrt((x/a)**2+(wp/cEv)**2))/((x/a)+sqrt((x/a)**2+(wp/cEv)**2))
 log1 = log(1._8-rTe**2*exp(-2.*x))
 log2 = log(1._8-rTm**2*exp(-2.*x))
 
-zero_sum2=x*(log1+log2)
+zero_sum_Pl = x*(log1+log2)
 
 end function
-!---------------------------------------------------------------------
 
-function zero_sum_int_Dr(x)
-!Drude zero summand function to integrate from 0 to 1
-use dopcasimir
-
-real(8):: zero_sum_int_Dr, x
-
-if (x.eq.(0._8)) then
-    zero_sum_int_Dr=0._8
-    else
-zero_sum_int_Dr=zero_sum1(dist,x)
-endif
-
-end function
-!---------------------------------------------------------------------
-
-function zero_sum_int1_Dr(x)
-!Drude zero summand function to integrate from 1 to Inf
-use dopcasimir
-
-real(8):: zero_sum_int1_Dr, x
-
-if (x.eq.(0._8)) then
-
-    zero_sum_int1_Dr=0._8
-    else
-
-    zero_sum_int1_Dr=(1._8/x)**2*zero_sum1(dist,1._8/x)
-endif
-
-end function
 !---------------------------------------------------------------------
 
 function zero_sum_int_Pl(x)
 !Plasma zero summand function to integrate from 0 to 1
 use dopcasimir
 
-real(8):: zero_sum_int_Pl, x
+real(4):: zero_sum_int_Pl, x
 
-if (x.eq.(0._8)) then
+if (x.eq.(0.0)) then
     zero_sum_int_Pl=0._8
     else
-zero_sum_int_Pl=zero_sum2(dist,x)
+    zero_sum_int_Pl = zero_sum_Pl(dist,x)
 endif
 
 end function
 !---------------------------------------------------------------------
 
-function zero_sum_int1_Pl(x)
-!Plasma zero summand function to integrate from 1 to Inf
-use dopcasimir
-
-real(8):: zero_sum_int1_Pl, x
-
-if (x.eq.(0._8)) then
-
-    zero_sum_int1_Pl=0._8
-    else
-
-    zero_sum_int1_Pl=(1._8/x)**2*zero_sum2(dist,1._8/x)
-endif
-
-end function
-!---------------------------------------------------------------------
 
 end module
 

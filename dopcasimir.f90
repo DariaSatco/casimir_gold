@@ -77,9 +77,8 @@ contains
         ! limits [1, Inf) --> (0,1]
         ! change variables xdx -->  1/(arg1**3)darg1;  dy --> 1/(arg2**2)darg2
 
-	real(8):: arg(2)
+	real(8):: zerotempint, arg(2)
 	real(8):: q, k(2), a
-	real(8):: zerotempint
 	real(8):: rTMn(2), rTEn(2), epsmodel(2)
 
     a=dist
@@ -118,37 +117,18 @@ contains
 
     end function
 !-----------------------------------------------------------------------------------------------
-
 	
 	function to_int(arg)
 	!integrable function for nonzero temperatures - function of one argument - x <--> k-frequency
     !interval [0,1]
     ! w in eV
 
-	real(8):: arg, to_int
+	real(4):: arg, to_int
 
-	to_int = eqf(dist, arg, w)
-
-	end function
-
-!------------------------------------------------------------------------------------------------
-
-	function to_int1(arg)
-	!integrable function for nonzero temperatures
-    !make change of interval for integration [1, Inf) --> (0,1]
-    ! w in eV
-
-	real(8):: arg, to_int1
-	
-	if (arg.eq.(0._8)) then
-		to_int1=0._8
-	else
-
-		to_int1 = (1._8/arg**2)*eqf(dist, 1._8/arg, w)
-
-	endif
+	to_int = eqf(dist, real(arg,8), w)
 
 	end function
+
 
 !----------------------------------------------------------------------------------
 
