@@ -17,6 +17,7 @@ integer:: N,stepn
 real(8):: T, wmax
 !T - temerature
 real(8):: res, rest0, res1
+real(8):: radius, coef
 
 !casimir energy (1st column)/force(2nd column) variables
 real(8), allocatable:: casimir_res_kk(:,:)
@@ -33,9 +34,18 @@ real(4):: sume_dr, sume_pl, sumf_dr, sumf_pl
 !--------------------------------------------------------------------
 !gold permittivity variables
 integer,parameter:: ng=663 !rows number in file
-!experimental data table
+!experimental data table Au
 real(8):: matrixAu(ng,3)
-!permittivity vectors
+!permittivity vectors Au
+integer,parameter:: nni=353
+!experimental data table Ni
+real(8):: matrixNi(nni,3)
+!permittivity vectors Ni
+integer,parameter:: nti=286
+!experimental data table Ti
+real(8):: matrixTi(nti,3)
+!permittivity vectors Ti
+
 real(8), allocatable:: epsAur(:), epsAurDr(:), epsAurMar(:), epsAurGenPl(:), epsAurLD(:), epsAurBB(:)
 !integration results
 real(8):: integralA1,integralA2
@@ -55,7 +65,7 @@ open(unit=11, file='casimirgold.txt', status='replace')
 !casimirgold.txt - file with computational results
 
 !title
-write(11,150) 'a, micro m', 'Kramers-Kr', 'Drude', 'Marachevsky', 'Gen_Plasma', &
+write(11,150) 'a, micro m', 'Kramers-Kr, nJ', 'Drude', 'Marachevsky', 'Gen_Plasma', &
 'Drude-Lor', 'Bren-Borm', 'T=0 Gen_Pl', 'Casimir'
 
 !-------------------------------------------------------------------------
@@ -63,7 +73,7 @@ write(11,150) 'a, micro m', 'Kramers-Kr', 'Drude', 'Marachevsky', 'Gen_Plasma', 
 open(unit=13, file='casimir_force_gold.txt', status='replace')
 !casimir_force_gold.txt - file with computational results
 
-write(13,150) 'a, micro m', 'Kramers-Kr', 'Drude', 'Marachevsky', 'Gen_Plasma', &
+write(13,150) 'a, micro m', 'Kramers-Kr, nN', 'Drude', 'Marachevsky', 'Gen_Plasma', &
 'Drude-Lor', 'Bren-Borm', 'Casimir'
 
 !-----------------------------------------------------------------------
@@ -83,6 +93,13 @@ write(14,150) 'a, micro m', 'Kramers-Kr', 'Drude', 'Marachevsky', 'Gen_Plasma', 
 'Drude-Lor', 'Bren-Borm'
 
 !-----------------------------------------------------------------------
+open(unit=20, file='casimir_decca.txt', status='replace')
+!file with force values in order to compare with Decca
+
+write(20,150) 'a, nm', 'Kramers-Kr', 'Drude', 'Marachevsky', 'Gen_Plasma', &
+'Drude-Lor', 'Bren-Borm', 'T=0 Gen_Pl', 'Casimir'
+
+!-----------------------------------------------------------------------
 !code for calulation of casimir free energy
 
 open(unit=15, file='gold_eps_im_re_ev+Olmon.txt', status='old')
@@ -96,6 +113,31 @@ read(15,*)
 do i=1,ng
 read(15,*), (matrixAu(i,j),j=1,3)
 end do
+
+open(unit=21, file='tableNi_eV_eps_Re_Im.txt', status='old')
+!read matrix from file
+!1st column - frequencies
+!2nd column - real part of permittivity
+!3rd column - imaginary part of permittivity
+
+read(21,*)
+
+do i=1,nni
+read(21,*), (matrixNi(i,j),j=1,3)
+end do
+
+open(unit=22, file='tableTi_eV_eps_Re_Im.txt', status='old')
+!read matrix from file
+!1st column - frequencies
+!2nd column - real part of permittivity
+!3rd column - imaginary part of permittivity
+
+read(22,*)
+
+do i=1,nti
+read(22,*), (matrixTi(i,j),j=1,3)
+end do
+
 
 T=300._8
 !T - Temperature of the material
@@ -338,11 +380,29 @@ abs((casimir_res_bb(j,1))*1.0e9), abs(rest0)*1.0e9, abs(casimir_res_original(j,1
 !want to write eta = free energy / casimir result
 write(12,100) dist*1.0e6, casimir_res_kk(j,1)/casimir_res_original(j,1),&
 casimir_res_dr(j,1)/casimir_res_original(j,1), &
+casimir_res_mar(j,1)/casimir_res_original(j,1), &
 casimir_res_pl(j,1)/casimir_res_original(j,1), &
 casimir_res_ldr(j,1)/casimir_res_original(j,1), &
 casimir_res_bb(j,1)/casimir_res_original(j,1), &
 rest0/casimir_res_original(j,1)
 
+!write data to compare with Decca
+!radius of Au sphere R=149,3 micro m=149.3e-6 m
+radius=149.3e-6
+coef=2*pi*radius
+
+write(*,100) dist*1.0e9, coef*casimir_res_kk(j,1)*1.0e15, coef*casimir_res_dr(j,1)*1.0e15, &
+coef*casimir_res_mar(j,1)*1.0e15, coef*casimir_res_pl(j,1)*1.0e15, coef*casimir_res_ldr(j,1)*1.0e15, &
+coef*casimir_res_bb(j,1)*1.0e15, coef*rest0*1.0e15, coef*casimir_res_original(j,1)*1.0e15
+
+!write data to compare with Lamoreaux
+!radius of Au sphere R=15,6 cm=15.6e-2 m
+radius=15.6e-2
+coef=2*pi*radius*(dist*1.0e6)**2
+
+write(20,100) dist*1.0e6, coef*casimir_res_kk(j,1)*1.0e12, coef*casimir_res_dr(j,1)*1.0e12, &
+coef*casimir_res_mar(j,1)*1.0e12, coef*casimir_res_pl(j,1)*1.0e12, coef*casimir_res_ldr(j,1)*1.0e12, &
+coef*casimir_res_bb(j,1)*1.0e12, coef*rest0*1.0e12, coef*casimir_res_original(j,1)*1.0e12
 
 !***********************************************************************************************
 !multiply integrational force results by necessary constants
@@ -400,6 +460,10 @@ close(10)
 close(12)
 close(13)
 close(14)
+close(15)
+close(20)
+close(21)
+close(22)
 
 print*, 'Done!'
 

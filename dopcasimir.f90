@@ -5,10 +5,12 @@ module dopcasimir
     real(8), public :: w,dist
 	! w - Matsubara frequency
 	! dist - the distance between interacting plates
-    real(8), public :: eps(3)
+    real(8), public :: eps(3), epsNi, epsTi, epsAu, eps_gap
 	! eps - dielectric permittivity vector
     ! eps(1),eps(2) describes materials
 	! eps(3) describes gap permettivity
+	real(8), public :: d,t_Au
+	!d,t - thikness parameter of slabs (see Decca 2016)
     real(8), parameter :: pi=3.1415926
     real(8), parameter :: eV=1.519e15  ! rad/s
     real(8), parameter :: kb=8.617e-5  ! eV/K  Boltzman constant (kb=1.38e-23 J/K)
@@ -22,7 +24,7 @@ contains
 
 !------------------------------------------------------------------------------------------------
 
-	function eqf(a,x,y)
+	function eqf(a,x,y,rtm_func,rte_func)
 	! function needed to integrate in formula for Casimir free energy 
 	! x=dist*r, y=w*dist/c change the variables to dimensioness
     ! the constants in front of the integral: rdr --> 1/dist**2 xdx;  dw --> c/dist
@@ -31,9 +33,23 @@ contains
 
 	real(8):: a,x,q,y,rTMn(2),rTEn(2),eqf
 
-		rTMn=rTM(x/a,y)
+    interface
+
+    function rtm_func(kf, freq)
+    real(8):: rtm_func(2)
+    real(8):: kf, freq
+    end function
+
+    function rte_func(kf, freq)
+    real(8):: rte_func(2)
+    real(8):: kf, freq
+    end function
+
+    end interface
+
+		rTMn=rtm_func(x/a,y)
 !calculate the TM Frenel coefficient for the concrete dist as a function of x,y
-		rTEn=rTE(x/a,y)
+		rTEn=rte_func(x/a,y)
 !calculate the TE Frenel coefficient for the concrete dist as a function of x,y
 			
 		q=sqrt(x**2+(a*y/cEv)**2)
@@ -120,12 +136,11 @@ contains
 	
 	function to_int(arg)
 	!integrable function for nonzero temperatures - function of one argument - x <--> k-frequency
-    !interval [0,1]
     ! w in eV
 
 	real(4):: arg, to_int
 
-	to_int = eqf(dist, real(arg,8), w)
+	to_int = eqf(dist, real(arg,8), w, rTM, rTE)
 
 	end function
 
@@ -172,7 +187,187 @@ contains
 	end function rTE
 
 !---------------------------------------------------------------------------------
+!construct several function to calculete Casimir for three slab plate
+!for more information see Decca (2016)
 
+function k_prop(eps_prop , kf, freq)
+
+real(8):: k_prop
+real(8):: eps_prop, kf, freq
+
+k_prop = sqrt(kf**2 + eps_prop*(freq/cEv)**2)
+
+end function
+
+!---------------------------------------------------------------------------------
+
+function rTE_ab( eps_a, eps_b, kf, freq )
+
+real(8):: rTE_ab
+real(8):: eps_a, eps_b, kf, freq
+real(8):: k_a, k_b
+
+k_a = k_prop( eps_a, kf, freq )
+k_b = k_prop( eps_b, kf, freq )
+
+rTE_ab = ( k_a - k_b )/( k_a + k_b )
+
+end function rTE_ab
+
+!--------------------------------------------------------------------------------
+
+function rTM_ab( eps_a, eps_b, kf, freq )
+
+real(8):: rTM_ab
+real(8):: eps_a, eps_b, kf, freq
+real(8):: k_a, k_b
+
+k_a = k_prop( eps_a, kf, freq )
+k_b = k_prop( eps_b, kf, freq )
+
+rTM_ab = ( eps_b*k_a - eps_a*k_b )/( eps_b*k_a + eps_a*k_b )
+
+end function
+
+!-------------------------------------------------------------------------------
+
+function rTE_TM_123( eps_1, eps_2, eps_3, kf, freq, marker )
+!in case Au-Ti-Ni slab - 1 <--> Au, 2 <--> Ti, 3 <--> Ni
+!in case Au-Ti-Au slab - 1 <--> Au, 2 <--> Ti, 3 <--> Au
+!marker = 1 ==> rTE
+!marker = 2 ==> rTM
+
+real(8):: rTE_123
+real(8):: kf, freq
+real(8):: eps_1, eps_2, eps_3
+real(8):: num,denum
+integer:: marker
+
+if ( marker == 1 ) then
+num = rTE_ab(eps_1, eps_2, kf, freq) + exp( -2 * d * k_prop (eps_2, kf, freq) )  * rTE_ab(eps_2, eps_3, kf, freq)
+denum = 1.0D+00 + exp( -2 * d * k_prop (eps_2, kf, freq) ) * rTE_ab(eps_1, eps_2, kf, freq) * rTE_ab(eps_2, eps_3, kf, freq)
+
+rTE_TM_123 = num/denum
+
+elseif ( marker == 2 ) then
+
+num = rTM_ab(eps_1, eps_2, kf, freq) + exp( -2 * d * k_prop (eps_2, kf, freq) )  * rTM_ab(eps_2, eps_3, kf, freq)
+denum = 1.0D+00 + exp( -2 * d * k_prop (eps_2, kf, freq) ) * rTM_ab(eps_1, eps_2, kf, freq) * rTM_ab(eps_2, eps_3, kf, freq)
+
+rTE_TM_123 = num/denum
+else
+
+print*, 'Incorrect marker, can be equal only to 1 (rTE) or 2 (rTM)'
+
+endif
+
+end function
+
+!-----------------------------------------------------------------------------
+
+function rTE_2_Ni( kf, freq )
+!new Frenel TE coefficient for Ni
+real(8):: rTE_2_Ni(2)
+real(8):: kf, freq
+real(8):: num, denum, q, k_Au
+
+k_Au = k_prop(epsAu, kf, freq)
+q=sqrt(kf**2+(freq/cEv)**2)
+
+rTE_2_Ni(1)=(q-k_Au)/(q+k_Au)
+
+num = rTE_ab(eps_gap, epsAu, kf, freq) + exp( -2*t_Au*k_Au )*rTE_TM_123(epsAu,epsTi,epsNi,kf,freq,1)
+denum = 1.0D+00 + exp( -2*t_Au*k_Au) * rTE_ab(eps_gap, epsAu, kf, freq) * rTE_TM_123(epsAu,epsTi,epsNi,kf,freq,1)
+
+rTE_2_Ni(2) = num/denum
+
+end function
+
+!-----------------------------------------------------------------------------
+
+function rTM_2_Ni( kf, freq )
+!new Frenel TM coefficient for Ni
+real(8):: rTM_2_Ni(2)
+real(8):: kf, freq
+real(8):: num, denum, q, k_Au
+
+k_Au = k_prop(epsAu, kf, freq)
+q=sqrt(kf**2+(freq/cEv)**2)
+
+rTM_2_Ni(1)=(epsAu*q-k_Au)/(epsAu*q+k_Au)
+
+num = rTM_ab(eps_gap, epsAu, kf, freq) + exp( -2*t_Au*k_Au)*rTE_TM_123(epsAu,epsTi,epsNi,kf,freq,2)
+denum = 1.0D+00 + exp( -2*t_Au*k_Au) * rTM_ab(eps_gap, epsAu, kf, freq) * rTE_TM_123(epsAu,epsTi,epsNi,kf,freq,2)
+
+rTM_2_Ni(2) = num/denum
+
+end function
+
+!-----------------------------------------------------------------------------
+
+function rTE_2_Au( kf, freq )
+!new Frenel TE coefficient for Au
+real(8):: rTE_2_Au(2)
+real(8):: kf, freq
+real(8):: num, denum, q, k_Au
+
+k_Au = k_prop(epsAu, kf, freq)
+q=sqrt(kf**2+(freq/cEv)**2)
+
+rTE_2_Au(1)=(q-k_Au)/(q+k_Au)
+
+num = rTE_ab(eps_gap, epsAu, kf, freq) + exp( -2*t_Au*k_Au)*rTE_TM_123(epsAu,epsTi,epsAu,kf,freq,1)
+denum = 1.0D+00 + exp( -2*t_Au*k_Au) * rTE_ab(eps_gap, epsAu, kf, freq) * rTE_TM_123(epsAu,epsTi,epsAu,kf,freq,1)
+
+rTE_2_Au(2) = num/denum
+
+end function
+
+!-----------------------------------------------------------------------------
+
+function rTM_2_Au( kf, freq )
+!new Frenel TM coefficient for Au
+real(8):: rTM_2_Au(2)
+real(8):: kf, freq
+real(8):: num, denum, q, k_Au
+
+k_Au = k_prop(epsAu, kf, freq)
+q=sqrt(kf**2+(freq/cEv)**2)
+
+rTM_2_Au(1)=(epsAu*q-k_Au)/(epsAu*q+k_Au)
+
+num = rTM_ab(eps_gap, epsAu, kf, freq) + exp( -2*t_Au*k_Au)*rTE_TM_123(epsAu,epsTi,epsAu,kf,freq,2)
+denum = 1.0D+00 + exp( -2*t_Au*k_Au) * rTM_ab(eps_gap, epsAu, kf, freq) * rTE_TM_123(epsAu,epsTi,epsAu,kf,freq,2)
+
+rTM_2_Au(2) = num/denum
+
+end function
+
+!-----------------------------------------------------------------------------
+
+function to_int_Au(arg)
+    !integrable function for nonzero temperatures - function of one argument - x <--> k-frequency
+    ! w in eV
+
+    real(4):: arg, to_int_Au
+
+    to_int_Au = eqf(dist, real(arg,8), w, rTM_2_Au, rTE_2_Au)
+
+end function
+
+!-----------------------------------------------------------------------------
+
+function to_int_Ni(arg)
+    !integrable function for nonzero temperatures - function of one argument - x <--> k-frequency
+    ! w in eV
+
+    real(4):: arg, to_int_Ni
+
+    to_int_Ni = eqf(dist, real(arg,8), w, rTM_2_Ni, rTE_2_Ni)
+
+end function
+
+!-----------------------------------------------------------------------------
 !*****************************
 !INTEGRATION SUBROUTINES
 !*****************************
