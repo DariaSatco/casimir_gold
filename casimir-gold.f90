@@ -4,6 +4,8 @@ use dopcasimir
 use silicon
 use gold
 use force_module
+use nickel
+use titanium
 
 implicit none
 
@@ -17,7 +19,9 @@ integer:: N,stepn
 real(8):: T, wmax
 !T - temerature
 real(8):: res, rest0, res1
-real(8):: radius, coef
+real(8):: radius, coef, radius1, coef1
+real(8):: start_point, final_point
+real(8):: step
 
 !casimir energy (1st column)/force(2nd column) variables
 real(8), allocatable:: casimir_res_kk(:,:)
@@ -27,9 +31,12 @@ real(8), allocatable:: casimir_res_ldr(:,:)
 real(8), allocatable:: casimir_res_bb(:,:)
 real(8), allocatable:: casimir_res_mar(:,:)
 real(8), allocatable:: casimir_res_original(:,:)
+real(8), allocatable:: casimir_res_dec1(:), casimir_res_dec2(:)
+real(8), allocatable:: casimir_res_dec_dr(:), casimir_res_dec_pl(:)
 
 !zero summands
 real(4):: sume_dr, sume_pl, sumf_dr, sumf_pl
+real(4):: sume_dr_dec1, sume_pl_dec1, sume_dr_dec2, sume_pl_dec2
 
 !--------------------------------------------------------------------
 !gold permittivity variables
@@ -47,10 +54,13 @@ real(8):: matrixTi(nti,3)
 !permittivity vectors Ti
 
 real(8), allocatable:: epsAur(:), epsAurDr(:), epsAurMar(:), epsAurGenPl(:), epsAurLD(:), epsAurBB(:)
+real(8), allocatable:: epsNiDr(:), epsTiDr(:)
 !integration results
 real(8):: integralA1,integralA2
 !variables needed for Kr-Kr integral in cspint subroutine
 real(8)::funvalAu(ng),SpcoefA(3,ng), exintA(ng), workA(ng)
+real(8)::funvalNi(nni),SpcoefNi(3,nni), exintNi(nni), workNi(nni)
+real(8)::funvalTi(nti),SpcoefTi(3,nti), exintTi(nti), workTi(nti)
 !variables for Kr-Kr integral in qnc79 subroutine
 integer(4)::nevalA,ierA
 !variables for qagi
@@ -93,11 +103,17 @@ write(14,150) 'a, micro m', 'Kramers-Kr', 'Drude', 'Marachevsky', 'Gen_Plasma', 
 'Drude-Lor', 'Bren-Borm'
 
 !-----------------------------------------------------------------------
-open(unit=20, file='casimir_decca.txt', status='replace')
+open(unit=20, file='casimir_lamoreaux.txt', status='replace')
 !file with force values in order to compare with Decca
 
 write(20,150) 'a, nm', 'Kramers-Kr', 'Drude', 'Marachevsky', 'Gen_Plasma', &
 'Drude-Lor', 'Bren-Borm', 'T=0 Gen_Pl', 'Casimir'
+
+!-----------------------------------------------------------------------
+open(unit=25, file='casimir_decca.txt', status='replace')
+!file with force values in order to compare with Decca
+
+write(25,150) 'a, nm', 'Drude, fN', 'Gen_Plasma'
 
 !-----------------------------------------------------------------------
 !code for calulation of casimir free energy
@@ -123,7 +139,7 @@ open(unit=21, file='tableNi_eV_eps_Re_Im.txt', status='old')
 read(21,*)
 
 do i=1,nni
-read(21,*), (matrixNi(i,j),j=1,3)
+read(21,*), (matrixNi(nni+1-i,j),j=1,3)
 end do
 
 open(unit=22, file='tableTi_eV_eps_Re_Im.txt', status='old')
@@ -135,19 +151,37 @@ open(unit=22, file='tableTi_eV_eps_Re_Im.txt', status='old')
 read(22,*)
 
 do i=1,nti
-read(22,*), (matrixTi(i,j),j=1,3)
+read(22,*), (matrixTi(nti+1-i,j),j=1,3)
 end do
 
 
 T=300._8
 !T - Temperature of the material
 
+!epxperimental parameters (Decca)
+d=1.0e-8
+t_Au=37.0e-9
+
 eps(3)=1._8
 !fix the dielectric permettivity of the gap (vacuum)
+
+print*, 'type starting point in nanometers'
+read *, start_point
+
+print*, 'type final point in nanometers'
+read*, final_point
+
+if (final_point .le. start_point) then
+    print*, 'final point must be grater then starting, try again'
+    read*, final_point
+end if
 
 print *, 'type number of points '
 read *, N
 !N - number of points at the plot
+
+step = (final_point - start_point)*1.0e-9/N
+start_point = start_point * 1.0e-9
 
 allocate(casimir_res_kk(N,2))
 casimir_res_kk = 0.0
@@ -163,18 +197,20 @@ allocate(casimir_res_bb(N,2))
 casimir_res_bb = 0.0
 allocate(casimir_res_original(N,2))
 casimir_res_original = 0.0
+allocate(casimir_res_dec1(N))
+casimir_res_dec1 = 0.0
+allocate(casimir_res_dec2(N))
+casimir_res_dec2 = 0.0
+allocate(casimir_res_dec_dr(N))
+allocate(casimir_res_dec_pl(N))
 
 model(1)=4
 model(2)=4
 
-    do j=1,N
+    do j=1,N+1
     !do-cycle for distance
-    dist=1.0e-7*j
+    dist=start_point+(j-1)*step
 
-    sume_dr=0.0
-    sume_pl=0.0
-    sumf_dr=0.0
-    sumf_pl=0.0
 
     !first calculate zero-temperature casimir energy
     a=(/0._8, 0._8/)
@@ -198,6 +234,8 @@ print*, 'k=', k
 
 allocate(epsAur(k))
 allocate(epsAurDr(k))
+allocate(epsNiDr(k))
+allocate(epsTiDr(k))
 allocate(epsAurMar(k))
 allocate(epsAurGenPl(k))
 allocate(epsAurLD(k))
@@ -210,7 +248,7 @@ allocate(epsAurBB(k))
             w=2*i*pi*kb*T/(h*eV)
             !w - Matsubara frequency
             freqA=w
-
+!GOLD**************************************************************************************
     !integrates the Drude-model approximation
     call qnc79(drude_to_int, 0.0_8, matrixAu(1,1), 1.0e-3_8, integralA1, ierA, nevalA)
 
@@ -223,6 +261,36 @@ allocate(epsAurBB(k))
 
     !Kr-Kr formula for permittivity
     epsAur(i)=(integralA1+integralA2)*2/pi + 1.0
+
+!NICKEL**********************************************************************************
+!integrates the Drude-model approximation
+    call qnc79(drude_to_int_Ni, 0.0_8, matrixNi(1,1), 1.0e-3_8, integralA1, ierA, nevalA)
+
+    !builds vector to integrate from the Palik data
+        do l=1,nni
+        funvalNi(l)=matrixNi(l,3)*matrixNi(l,1)/(matrixNi(l,1)**2+freqA**2)
+        end do
+    !integrates the vector of data
+    call cspint(nni, matrixNi(1:nni,1), funvalNi, matrixNi(1,1), matrixNi(nni,1), SpcoefNi, exintNi, workNi, integralA2)
+
+    !Kr-Kr formula for permittivity
+    epsNiDr(i)=(integralA1+integralA2)*2/pi + 1.0
+
+!TITANIUM********************************************************************************
+!integrates the Drude-model approximation
+    call qnc79(drude_to_int_Ti, 0.0_8, matrixTi(1,1), 1.0e-3_8, integralA1, ierA, nevalA)
+
+    !builds vector to integrate from the Palik data
+        do l=1,nti
+        funvalTi(l)=matrixTi(l,3)*matrixTi(l,1)/(matrixTi(l,1)**2+freqA**2)
+        end do
+    !integrates the vector of data
+    call cspint(nti, matrixTi(1:nti,1), funvalTi, matrixTi(1,1), matrixTi(nti,1), SpcoefTi, exintTi, workTi, integralA2)
+
+    !Kr-Kr formula for permittivity
+    epsTiDr(i)=(integralA1+integralA2)*2/pi + 1.0
+
+!****************************************************************************************
 
     !create vectors of permittivity values within different models
     !Drude model
@@ -329,17 +397,30 @@ allocate(epsAurBB(k))
     call qagi( lif_to_int, 0.0, 1, 1.0e-10, 1.0e-8, result, abserr, neval, ier )
     casimir_res_bb(j,2)=casimir_res_bb(j,2) + result
 
+!----------------------------------------------------------------------
+
+    !calculate Casimir for Decca experiment
+    epsNi = epsNiDr(i)
+    epsTi = epsTiDr(i)
+    epsAu = epsAur(i)
+
+call qagi( to_int_Au, 0.0, 1, 1.0e-5, 1.0e-5, result, abserr, neval, ier )
+     casimir_res_dec1(j) = casimir_res_dec1(j) + result
+
+call qagi( to_int_Ni, 0.0, 1, 1.0e-5, 1.0e-5, result, abserr, neval, ier )
+     casimir_res_dec2(j) = casimir_res_dec2(j) + result
+
     end do
 
 !****************************************************
 !we calculated only 1,...,N summands, let's calculate zero summand
 
 !energy----------------------------------------
-!ssum0 (Drude,Marachevsky,Kramers-Kr)
+!(Drude,Marachevsky,Kramers-Kr)
 
     call qagi( zero_sum_Dr, 0.0, 1, 1.0e-5, 1.0e-5, sume_dr, abserr, neval, ier )
 
-!ssum01 (Plasma)
+!(Plasma)
 
     call qagi( zero_sum_int_Pl, 0.0, 1, 1.0e-5, 1.0e-5, sume_pl, abserr, neval, ier )
 
@@ -386,14 +467,6 @@ casimir_res_ldr(j,1)/casimir_res_original(j,1), &
 casimir_res_bb(j,1)/casimir_res_original(j,1), &
 rest0/casimir_res_original(j,1)
 
-!write data to compare with Decca
-!radius of Au sphere R=149,3 micro m=149.3e-6 m
-radius=149.3e-6
-coef=2*pi*radius
-
-write(*,100) dist*1.0e9, coef*casimir_res_kk(j,1)*1.0e15, coef*casimir_res_dr(j,1)*1.0e15, &
-coef*casimir_res_mar(j,1)*1.0e15, coef*casimir_res_pl(j,1)*1.0e15, coef*casimir_res_ldr(j,1)*1.0e15, &
-coef*casimir_res_bb(j,1)*1.0e15, coef*rest0*1.0e15, coef*casimir_res_original(j,1)*1.0e15
 
 !write data to compare with Lamoreaux
 !radius of Au sphere R=15,6 cm=15.6e-2 m
@@ -434,9 +507,42 @@ casimir_res_pl(j,2)/casimir_res_original(j,2), &
 casimir_res_ldr(j,2)/casimir_res_original(j,2), &
 casimir_res_bb(j,2)/casimir_res_original(j,2)
 
+!conduct calculations similar with that form Decca paper---------------------------------
+
+!zero summand
+!Drude - Nickel
+
+    call qagi( zero_sum_Dr_Ni, 0.0, 1, 1.0e-5, 1.0e-5, sume_dr_dec2, abserr, neval, ier )
+
+!Plasma - Nickel
+
+    call qagi( zero_sum_Pl_Ni, 0.0, 1, 1.0e-5, 1.0e-5, sume_pl_dec2, abserr, neval, ier )
+
+!Drude - Gold
+
+    call qagi( zero_sum_Dr_AuAu, 0.0, 1, 1.0e-5, 1.0e-5, sume_dr_dec1, abserr, neval, ier )
+
+!Plasma - Gold
+
+    call qagi( zero_sum_Pl_AuAu, 0.0, 1, 1.0e-5, 1.0e-5, sume_pl_dec1, abserr, neval, ier )
+
+!final
+radius1=149.3e-6
+coef1=2*pi*radius1
+
+casimir_res_dec_dr(j) = (casimir_res_dec1(j) + 0.5*sume_dr_dec1) - (casimir_res_dec2(j) + 0.5*sume_dr_dec2)
+casimir_res_dec_dr(j) = 1.602e-19*kb*T/(2*pi*dist**2)*coef1*casimir_res_dec_dr(j)
+
+casimir_res_dec_pl(j) = (casimir_res_dec1(j) + 0.5*sume_pl_dec1) - (casimir_res_dec2(j) + 0.5*sume_pl_dec2)
+casimir_res_dec_pl(j) = 1.602e-19*kb*T/(2*pi*dist**2)*coef1*casimir_res_dec_pl(j)
+
+write(25,100) dist*1.0e9, casimir_res_dec_dr(j)*1.0e15, casimir_res_dec_pl(j)*1.0e15
+
 
 deallocate(epsAur)
 deallocate(epsAurDr)
+deallocate(epsNiDr)
+deallocate(epsTiDr)
 deallocate(epsAurMar)
 deallocate(epsAurGenPl)
 deallocate(epsAurLD)
@@ -453,6 +559,11 @@ deallocate(casimir_res_mar)
 deallocate(casimir_res_ldr)
 deallocate(casimir_res_bb)
 deallocate(casimir_res_original)
+deallocate(casimir_res_dec1)
+deallocate(casimir_res_dec2)
+deallocate(casimir_res_dec_dr)
+deallocate(casimir_res_dec_pl)
+
 
 
 close(11)
@@ -464,6 +575,7 @@ close(15)
 close(20)
 close(21)
 close(22)
+close(25)
 
 print*, 'Done!'
 

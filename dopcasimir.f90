@@ -26,8 +26,8 @@ contains
 
 	function eqf(a,x,y,rtm_func,rte_func)
 	! function needed to integrate in formula for Casimir free energy 
-	! x=dist*r, y=w*dist/c change the variables to dimensioness
-    ! the constants in front of the integral: rdr --> 1/dist**2 xdx;  dw --> c/dist
+	! x=dist*r change the variable to dimensioness
+    ! the constants in front of the integral: rdr --> 1/dist**2 xdx
     ! w in eV
     ! c in eV*m (defined as cEv in module parameters)
 
