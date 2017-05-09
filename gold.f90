@@ -45,6 +45,18 @@ real(8), dimension(6), parameter:: sigmaRb=(/0.742, 0.349, 0.830, 1.246, 1.795, 
 !Racik plasma frequency
 real(8), parameter:: wpR=9.03
 
+!Gauss model
+!imaginary part
+real(8), dimension(6), parameter:: amplitude_im=(/ 6.139, 1.567, 1.524, 0.8617, 1.997, 0.4712 /)
+real(8), dimension(6), parameter:: w_band_im=(/ 3.73, 8.153, 5.5, 7.54, 11.3, 20.85 /)
+real(8), dimension(6), parameter:: sigma_im=(/ 1.177, 5.202, 0.9631, 1.666, 24.93, 2.232 /)
+
+!real part
+real(8), dimension(6), parameter:: amplitude_re=(/ 1.696, 6.351, 1.487, 0.415, 0.2371, 0.0 /)
+real(8), dimension(6), parameter:: w_band_re=(/ 1.94, 2.45, 5.5, 7.54, 11.3, 0.0 /)
+real(8), dimension(6), parameter:: sigma_re=(/ 2.666, 1.089, 3.633, 0.9662, 1.772, 0.0 /)
+
+
 contains
 
 function Drude(x, param)
@@ -421,6 +433,124 @@ Brendel_Bormann=Drude(x, param)+Brendel_Bormann_oscil(x, a, b, c, d)
 end function
 
 !-------------------------------------------------
+
+!-------------------------------------------------
+
+function Gauss(x,a,w0,sigma)
+!Gauss function
+!a - amplitude
+!w0 - resonans frequency
+!sigma^2 - dispersion
+
+real(8):: x, a, w0, sigma
+real(8):: Gauss
+
+Gauss=a*exp(-(x-w0)**2/sigma**2)
+
+end function
+
+!-------------------------------------------------
+
+function Gauss_aprox(x,a,b,c,marker)
+!Approximation as a sum of 6 Gauss contours
+
+real(8):: x, a(6), b(6), c(6)
+real(8):: Gauss_aprox
+integer:: marker
+integer:: i
+
+Gauss_aprox=0.0D+00
+
+if (marker .eq. 1) then
+    do i=1,6
+    Gauss_aprox = Gauss_aprox + Gauss(x,a(i),b(i),c(i)) + Gauss(x, a(i),-b(i),c(i))
+    end do
+        elseif (marker .eq. 2) then
+    do i=1,6
+    Gauss_aprox = Gauss_aprox + Gauss(x,a(i),b(i),c(i)) + Gauss(x, -a(i),-b(i),c(i))
+    end do
+        else
+    print*, 'marker must be equal 1 for real part, 2 for imaginary. Please, try again!'
+endif
+
+end function
+
+!-------------------------------------------------
+
+function gauss_kramers_int(x)
+!function to integrate in kramers-kronig to find real part from imaginary
+
+real(4):: gauss_kramers_int
+real(4):: x
+
+gauss_kramers_int=x*Gauss_aprox(real(x,8), amplitude_im, w_band_im, sigma_im, 2)/(x+freqA)
+
+end function
+
+!-------------------------------------------------
+function gauss_kramers_int1(x)
+!function to integrate in kramers-kronig to find imaginary part from real
+
+real(4):: gauss_kramers_int1
+real(4):: x
+
+gauss_kramers_int1=real(Gauss_aprox(real(x,8), amplitude_re, w_band_re, sigma_re, 1),4)
+
+end function
+!-------------------------------------------------
+
+function eps_gauss_iomega(x,a,b,c,n)
+!kramers_kronig from gauss sum
+
+!you can fix your own parameters
+!a - vector of amplitudes
+!b - vector of resonant frequencies
+!c - vector of dispersions
+
+!n - dimension of a,b,c
+real, parameter:: pi=3.14159265359
+
+integer:: n
+real(8):: x, eps_gauss_iomega, a(n),b(n),c(n)
+real(8):: WvalueRe1, WvalueIm1, WvalueRe2, WvalueIm2
+logical:: logvar
+real(8):: Re, Re1, Im
+integer:: k
+complex(8):: i
+complex(8):: complex_result
+
+!argW=Re+i*Im
+
+i = (0.0, 1.0)
+comlex_result = (0.0, 0.0)
+eps_gauss_iomega = 0.0D+00
+
+do k=1,n
+
+!calculate argument
+
+Re=b(k)/c(k)
+Re1=-b(k)/c(k)
+
+Im=x/c(k)
+
+!call Faddeeva function w(z)
+call wofz(Re, Im, WvalueRe1, WvalueIm1, logvar) !first summand
+call wofz(Re1, Im, WvalueRe2, WvalueIm2, logvar) !second summand
+
+
+if (logvar.eqv. .True.) then
+print*, 'Attention, error in wofz subroutine'
+else
+complex_result = complex_result + (cmplx(WvalueRe1-WvalueRe2,0.0,8) + i*(WvalueIm1-WvalueIm2))
+end if
+
+eps_gauss_iomega = eps_gauss_iomega + a(k)*aimag(complex_result)
+
+end do
+
+end function
+!---------------------------------------------------
 
 !*****************************************
 !Want to calculate zero summand

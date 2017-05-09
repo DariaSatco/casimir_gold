@@ -29,6 +29,7 @@ real(8), allocatable:: casimir_res_dr(:,:)
 real(8), allocatable:: casimir_res_pl(:,:)
 real(8), allocatable:: casimir_res_ldr(:,:)
 real(8), allocatable:: casimir_res_bb(:,:)
+real(8), allocatable:: casimir_res_gauss(:,:)
 real(8), allocatable:: casimir_res_mar(:,:)
 real(8), allocatable:: casimir_res_original(:,:)
 real(8), allocatable:: casimir_res_dec1(:), casimir_res_dec2(:)
@@ -53,7 +54,7 @@ integer,parameter:: nti=286
 real(8):: matrixTi(nti,3)
 !permittivity vectors Ti
 
-real(8), allocatable:: epsAur(:), epsAurDr(:), epsAurMar(:), epsAurGenPl(:), epsAurLD(:), epsAurBB(:)
+real(8), allocatable:: epsAur(:), epsAurDr(:), epsAurMar(:), epsAurGenPl(:), epsAurLD(:), epsAurBB(:), epsAurGauss(:)
 real(8), allocatable:: epsNiDr(:), epsTiDr(:)
 !integration results
 real(8):: integralA1,integralA2
@@ -76,7 +77,7 @@ open(unit=11, file='casimirgold.txt', status='replace')
 
 !title
 write(11,150) 'a, micro m', 'Kramers-Kr, nJ', 'Drude', 'Marachevsky', 'Gen_Plasma', &
-'Drude-Lor', 'Bren-Borm', 'T=0 Gen_Pl', 'Casimir'
+'Drude-Lor', 'Bren-Borm', 'Gauss', 'T=0 Gen_Pl', 'Casimir'
 
 !-------------------------------------------------------------------------
 
@@ -84,7 +85,7 @@ open(unit=13, file='casimir_force_gold.txt', status='replace')
 !casimir_force_gold.txt - file with computational results
 
 write(13,150) 'a, micro m', 'Kramers-Kr, nN', 'Drude', 'Marachevsky', 'Gen_Plasma', &
-'Drude-Lor', 'Bren-Borm', 'Casimir'
+'Drude-Lor', 'Bren-Borm', 'Gauss', 'Casimir'
 
 !-----------------------------------------------------------------------
 open(unit=12, file='eta_to_plot_gold_energy.txt', status='replace')
@@ -92,7 +93,7 @@ open(unit=12, file='eta_to_plot_gold_energy.txt', status='replace')
 
 !title
 write(12,150) 'a, micro m', 'Kramers-Kr', 'Drude', 'Marachevsky', 'Gen_Plasma', &
-'Drude-Lor', 'Bren-Borm', 'T=0 Gen_Pl'
+'Drude-Lor', 'Bren-Borm', 'Gauss', 'T=0 Gen_Pl'
 
 !-----------------------------------------------------------------------
 open(unit=14, file='eta_to_plot_gold_force.txt', status='replace')
@@ -100,18 +101,25 @@ open(unit=14, file='eta_to_plot_gold_force.txt', status='replace')
 
 !title
 write(14,150) 'a, micro m', 'Kramers-Kr', 'Drude', 'Marachevsky', 'Gen_Plasma', &
-'Drude-Lor', 'Bren-Borm'
+'Drude-Lor', 'Bren-Borm', 'Gauss'
 
 !-----------------------------------------------------------------------
 open(unit=20, file='casimir_lamoreaux.txt', status='replace')
-!file with force values in order to compare with Decca
+!file with force values in order to compare with Lamoreaux
 
 write(20,150) 'a, nm', 'Kramers-Kr', 'Drude', 'Marachevsky', 'Gen_Plasma', &
-'Drude-Lor', 'Bren-Borm', 'T=0 Gen_Pl', 'Casimir'
+'Drude-Lor', 'Bren-Borm', 'Gauss', 'T=0 Gen_Pl', 'Casimir'
+
+!-----------------------------------------------------------------------
+open(unit=26, file='casimir_decca_2007.txt', status='replace')
+!file with force values in order to compare with Decca 2007
+
+write(26,150) 'a, nm', 'Kramers-Kr, mPa', 'Drude', 'Marachevsky', 'Gen_Plasma', &
+'Drude-Lor', 'Bren-Borm', 'Gauss', 'Casimir'
 
 !-----------------------------------------------------------------------
 open(unit=25, file='casimir_decca.txt', status='replace')
-!file with force values in order to compare with Decca
+!file with force values in order to compare with Decca 2016
 
 write(25,150) 'a, nm', 'Drude, fN', 'Gen_Plasma'
 
@@ -195,6 +203,8 @@ allocate(casimir_res_ldr(N,2))
 casimir_res_ldr = 0.0
 allocate(casimir_res_bb(N,2))
 casimir_res_bb = 0.0
+allocate(casimir_res_gauss(N,2))
+casimir_res_gauss = 0.0
 allocate(casimir_res_original(N,2))
 casimir_res_original = 0.0
 allocate(casimir_res_dec1(N))
@@ -240,6 +250,7 @@ allocate(epsAurMar(k))
 allocate(epsAurGenPl(k))
 allocate(epsAurLD(k))
 allocate(epsAurBB(k))
+allocate(epsAurGauss(k))
 
         !calculate casimir energy
         do i=1,k
@@ -307,6 +318,9 @@ allocate(epsAurBB(k))
 
     !Brenedel-Bormann (Rakic)
     epsAurBB(i)=Brendel_Bormann(w, parRakic_BB, fRb*wpR**2, gammaRb, wRb, sigmaRb)
+
+    !Gauss (mine)
+    epsAurGauss(i)=epsAurDr(i)+eps_gauss_iomega(w,amplitude_im,w_band_im,sigma_im,6)
 !-----------------------------------------------------------------------
 
     !calculate casimir (Kramers-Kr)
@@ -399,10 +413,25 @@ allocate(epsAurBB(k))
 
 !----------------------------------------------------------------------
 
+!calculate casimir (Gauss)
+    !fix dielectric model
+    eps(1)=epsAurGauss(i)
+    eps(2)=epsAurGauss(i)
+
+    !calculate energy
+    call qagi( to_int, 0.0, 1, 1.0e-5, 1.0e-5, result, abserr, neval, ier )
+    casimir_res_gauss(j,1)=casimir_res_gauss(j,1) + result
+
+    !calculate force
+    call qagi( lif_to_int, 0.0, 1, 1.0e-10, 1.0e-8, result, abserr, neval, ier )
+    casimir_res_gauss(j,2)=casimir_res_gauss(j,2) + result
+
+!----------------------------------------------------------------------
+
     !calculate Casimir for Decca experiment
     epsNi = epsNiDr(i)
     epsTi = epsTiDr(i)
-    epsAu = epsAur(i)
+    epsAu = epsAurGauss(i)
 
 call qagi( to_int_Au, 0.0, 1, 1.0e-5, 1.0e-5, result, abserr, neval, ier )
      casimir_res_dec1(j) = casimir_res_dec1(j) + result
@@ -445,6 +474,8 @@ casimir_res_pl(j,1)=1.602e-19*kb*T/(2*pi*dist**2)*(0.5*sume_pl + casimir_res_pl(
 casimir_res_ldr(j,1)=1.602e-19*kb*T/(2*pi*dist**2)*(0.5*sume_dr + casimir_res_ldr(j,1))
 ! Brendel-Bormann
 casimir_res_bb(j,1)=1.602e-19*kb*T/(2*pi*dist**2)*(0.5*sume_dr + casimir_res_bb(j,1))
+! Gauss
+casimir_res_gauss(j,1)=1.602e-19*kb*T/(2*pi*dist**2)*(0.5*sume_dr + casimir_res_gauss(j,1))
 
 rest0=1.602e-19*h*rest0/(2*pi)**2
 
@@ -456,7 +487,8 @@ casimir_res_original(j,1)=-1.602e-19*(pi)**2*h*c/(720*dist**3)
 
 write(11,100) dist*1.0e6, abs((casimir_res_kk(j,1))*1.0e9), abs((casimir_res_dr(j,1))*1.0e9), &
 abs((casimir_res_mar(j,1))*1.0e9), abs((casimir_res_pl(j,1))*1.0e9), abs((casimir_res_ldr(j,1))*1.0e9), &
-abs((casimir_res_bb(j,1))*1.0e9), abs(rest0)*1.0e9, abs(casimir_res_original(j,1)*1.0e9)
+abs((casimir_res_bb(j,1))*1.0e9), abs((casimir_res_gauss(j,1))*1.0e9), &
+abs(rest0)*1.0e9, abs(casimir_res_original(j,1)*1.0e9)
 
 !want to write eta = free energy / casimir result
 write(12,100) dist*1.0e6, casimir_res_kk(j,1)/casimir_res_original(j,1),&
@@ -465,6 +497,7 @@ casimir_res_mar(j,1)/casimir_res_original(j,1), &
 casimir_res_pl(j,1)/casimir_res_original(j,1), &
 casimir_res_ldr(j,1)/casimir_res_original(j,1), &
 casimir_res_bb(j,1)/casimir_res_original(j,1), &
+casimir_res_gauss(j,1)/casimir_res_original(j,1), &
 rest0/casimir_res_original(j,1)
 
 
@@ -475,7 +508,9 @@ coef=2*pi*radius*(dist*1.0e6)**2
 
 write(20,100) dist*1.0e6, coef*casimir_res_kk(j,1)*1.0e12, coef*casimir_res_dr(j,1)*1.0e12, &
 coef*casimir_res_mar(j,1)*1.0e12, coef*casimir_res_pl(j,1)*1.0e12, coef*casimir_res_ldr(j,1)*1.0e12, &
-coef*casimir_res_bb(j,1)*1.0e12, coef*rest0*1.0e12, coef*casimir_res_original(j,1)*1.0e12
+coef*casimir_res_bb(j,1)*1.0e12, coef*casimir_res_gauss(j,1)*1.0e12, &
+coef*rest0*1.0e12, coef*casimir_res_original(j,1)*1.0e12
+
 
 !***********************************************************************************************
 !multiply integrational force results by necessary constants
@@ -491,13 +526,15 @@ casimir_res_pl(j,2)=-1.602e-19*kb*T/(pi*dist**3)*(0.5*sumf_pl + casimir_res_pl(j
 casimir_res_ldr(j,2)=-1.602e-19*kb*T/(pi*dist**3)*(0.5*sumf_dr + casimir_res_ldr(j,2))
 ! Brendel-Bormann
 casimir_res_bb(j,2)=-1.602e-19*kb*T/(pi*dist**3)*(0.5*sumf_dr + casimir_res_bb(j,2))
+! Gauss
+casimir_res_gauss(j,2)=-1.602e-19*kb*T/(pi*dist**3)*(0.5*sumf_dr + casimir_res_gauss(j,2))
 
 !Casimir original result
 casimir_res_original(j,2)=-1.602e-19*(pi)**2*h*c/(240*dist**4)
 
 write(13,100) dist*1.0e6, casimir_res_kk(j,2), casimir_res_dr(j,2), &
 casimir_res_mar(j,2), casimir_res_pl(j,2), casimir_res_ldr(j,2), &
-casimir_res_bb(j,2), casimir_res_original(j,2)
+casimir_res_bb(j,2), casimir_res_gauss(j,2), casimir_res_original(j,2)
 
 !want to write eta = free energy / casimir result
 write(14,100) dist*1.0e6, casimir_res_kk(j,2)/casimir_res_original(j,2),&
@@ -505,7 +542,14 @@ casimir_res_dr(j,2)/casimir_res_original(j,2), &
 casimir_res_mar(j,2)/casimir_res_original(j,2), &
 casimir_res_pl(j,2)/casimir_res_original(j,2), &
 casimir_res_ldr(j,2)/casimir_res_original(j,2), &
-casimir_res_bb(j,2)/casimir_res_original(j,2)
+casimir_res_bb(j,2)/casimir_res_original(j,2), &
+casimir_res_gauss(j,2)/casimir_res_original(j,2)
+
+!write data to compare with Decca article 2007
+
+write(26,100) dist*1.0e9, casimir_res_kk(j,2)*1e3, casimir_res_dr(j,2)*1e3, &
+casimir_res_mar(j,2)*1e3, casimir_res_pl(j,2)*1e3, casimir_res_ldr(j,2)*1e3, &
+casimir_res_bb(j,2)*1e3, casimir_res_gauss(j,2)*1e3, casimir_res_original(j,2)*1e3
 
 !conduct calculations similar with that form Decca paper---------------------------------
 
@@ -547,6 +591,7 @@ deallocate(epsAurMar)
 deallocate(epsAurGenPl)
 deallocate(epsAurLD)
 deallocate(epsAurBB)
+deallocate(epsAurGauss)
 
     end do
 
@@ -558,6 +603,7 @@ deallocate(casimir_res_dr)
 deallocate(casimir_res_mar)
 deallocate(casimir_res_ldr)
 deallocate(casimir_res_bb)
+deallocate(casimir_res_gauss)
 deallocate(casimir_res_original)
 deallocate(casimir_res_dec1)
 deallocate(casimir_res_dec2)
@@ -576,6 +622,7 @@ close(20)
 close(21)
 close(22)
 close(25)
+close(26)
 
 print*, 'Done!'
 
