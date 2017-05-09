@@ -1,0 +1,8 @@
+################################################################################
+# Automatically-generated file. Do not edit!
+################################################################################
+
+USER_OBJS :=
+
+LIBS := -L "E:/eclipse_workspace/libraries(fortran)/intlib" -lintlib -L "E:/eclipse_workspace/libraries(fortran)/quadpack" -lquadpack -L "E:/eclipse_workspace/libraries(fortran)/montecarlo" -lmontecarlo -L "E:/eclipse_workspace/libraries(fortran)/faddeva_func" -lfaddeevafunc
+

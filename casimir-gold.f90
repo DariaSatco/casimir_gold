@@ -35,6 +35,13 @@ real(8), allocatable:: casimir_res_original(:,:)
 real(8), allocatable:: casimir_res_dec1(:), casimir_res_dec2(:)
 real(8), allocatable:: casimir_res_dec_dr(:), casimir_res_dec_pl(:)
 
+!experimental data
+real(8):: dec_exp_2007(17,2)
+real(8):: dec_exp_2016(99,2)
+real(8):: lamoreaux_exp(21,2)
+integer:: expnumb
+real(8), allocatable:: x(:)
+
 !zero summands
 real(4):: sume_dr, sume_pl, sumf_dr, sumf_pl
 real(4):: sume_dr_dec1, sume_pl_dec1, sume_dr_dec2, sume_pl_dec2
@@ -124,6 +131,37 @@ open(unit=25, file='casimir_decca.txt', status='replace')
 write(25,150) 'a, nm', 'Drude, fN', 'Gen_Plasma'
 
 !-----------------------------------------------------------------------
+open(unit=30, file='decca-2007-paper-data.txt', status='old')
+!file with experimental data (Decca 2007)
+
+read(30,*)
+
+do k=1,17
+    read(30,*) (dec_exp_2007(k,j),j=1,2)
+end do
+
+!-----------------------------------------------------------------------
+open(unit=31, file='Decca-2016-06-au-37.csv', status='old')
+!file with experimental data (Decca 2016)
+
+read(31,*)
+
+do k=1,99
+    read(31,*) (dec_exp_2016(k,j),j=1,2)
+end do
+
+!-----------------------------------------------------------------------
+open(unit=32, file='lamoreaux-2010-fig2.csv', status='old')
+!file with experimental data (Lamoreaux)
+
+read(32,*)
+
+do k=1,21
+    read(32,*) (lamoreaux_exp(k,j),j=1,2)
+end do
+
+
+!-----------------------------------------------------------------------
 !code for calulation of casimir free energy
 
 open(unit=15, file='gold_eps_im_re_ev+Olmon.txt', status='old')
@@ -173,23 +211,47 @@ t_Au=37.0e-9
 eps(3)=1._8
 !fix the dielectric permettivity of the gap (vacuum)
 
-print*, 'type starting point in nanometers'
-read *, start_point
+!print*, 'type starting point in nanometers'
+!read *, start_point
+!
+!print*, 'type final point in nanometers'
+!read*, final_point
+!
+!if (final_point .le. start_point) then
+!    print*, 'final point must be grater then starting, try again'
+!    read*, final_point
+!end if
+!
+!print *, 'type number of points '
+!read *, N
+!!N - number of points at the plot
+!
+!step = (final_point - start_point)*1.0e-9/N
+!start_point = start_point * 1.0e-9
 
-print*, 'type final point in nanometers'
-read*, final_point
+print*, 'choose the number of experiment you want to compare data with:'
+print*, '1 - Decca 2007'
+print*, '2 - Decca 2016'
+print*, '3 - Lamoreaux'
 
-if (final_point .le. start_point) then
-    print*, 'final point must be grater then starting, try again'
-    read*, final_point
-end if
+read*, expnumb
 
-print *, 'type number of points '
-read *, N
-!N - number of points at the plot
+if (expnumb .eq. 1) then
+    N=17
+    allocate(x(N))
+    x=dec_exp_2007(1:17,1)*1e-9
+elseif (expnumb .eq. 2) then
+    N=99
+    allocate(x(N))
+    x=dec_exp_2016(1:99,1)*1e-9
+elseif (expnumb .eq. 3) then
+    N=21
+    allocate(x(N))
+    x=lamoreaux_exp(1:21,1)*1e-6
+else
+    print*, 'The number must be equal 1,2 or 3! Please, try again.'
+endif
 
-step = (final_point - start_point)*1.0e-9/N
-start_point = start_point * 1.0e-9
 
 allocate(casimir_res_kk(N,2))
 casimir_res_kk = 0.0
@@ -217,9 +279,12 @@ allocate(casimir_res_dec_pl(N))
 model(1)=4
 model(2)=4
 
-    do j=1,N+1
-    !do-cycle for distance
-    dist=start_point+(j-1)*step
+!    do j=1,N+1
+!    !do-cycle for distance
+!    dist=start_point+(j-1)*step
+
+    do j=1,N
+    dist=x(j)
 
 
     !first calculate zero-temperature casimir energy
@@ -506,10 +571,21 @@ rest0/casimir_res_original(j,1)
 radius=15.6e-2
 coef=2*pi*radius*(dist*1.0e6)**2
 
-write(20,100) dist*1.0e6, coef*casimir_res_kk(j,1)*1.0e12, coef*casimir_res_dr(j,1)*1.0e12, &
-coef*casimir_res_mar(j,1)*1.0e12, coef*casimir_res_pl(j,1)*1.0e12, coef*casimir_res_ldr(j,1)*1.0e12, &
-coef*casimir_res_bb(j,1)*1.0e12, coef*casimir_res_gauss(j,1)*1.0e12, &
-coef*rest0*1.0e12, coef*casimir_res_original(j,1)*1.0e12
+!write(20,100) dist*1.0e6, coef*casimir_res_kk(j,1)*1.0e12, coef*casimir_res_dr(j,1)*1.0e12, &
+!coef*casimir_res_mar(j,1)*1.0e12, coef*casimir_res_pl(j,1)*1.0e12, coef*casimir_res_ldr(j,1)*1.0e12, &
+!coef*casimir_res_bb(j,1)*1.0e12, coef*casimir_res_gauss(j,1)*1.0e12, &
+!coef*rest0*1.0e12, coef*casimir_res_original(j,1)*1.0e12
+
+write(20,100) dist*1.0e6, &
+coef*casimir_res_kk(j,1)*1.0e12+lamoreaux_exp(j,2), &
+coef*casimir_res_dr(j,1)*1.0e12+lamoreaux_exp(j,2), &
+coef*casimir_res_mar(j,1)*1.0e12+lamoreaux_exp(j,2), &
+coef*casimir_res_pl(j,1)*1.0e12+lamoreaux_exp(j,2), &
+coef*casimir_res_ldr(j,1)*1.0e12+lamoreaux_exp(j,2), &
+coef*casimir_res_bb(j,1)*1.0e12+lamoreaux_exp(j,2), &
+coef*casimir_res_gauss(j,1)*1.0e12+lamoreaux_exp(j,2), &
+coef*rest0*1.0e12+lamoreaux_exp(j,2), &
+coef*casimir_res_original(j,1)*1.0e12+lamoreaux_exp(j,2)
 
 
 !***********************************************************************************************
@@ -547,9 +623,19 @@ casimir_res_gauss(j,2)/casimir_res_original(j,2)
 
 !write data to compare with Decca article 2007
 
-write(26,100) dist*1.0e9, casimir_res_kk(j,2)*1e3, casimir_res_dr(j,2)*1e3, &
-casimir_res_mar(j,2)*1e3, casimir_res_pl(j,2)*1e3, casimir_res_ldr(j,2)*1e3, &
-casimir_res_bb(j,2)*1e3, casimir_res_gauss(j,2)*1e3, casimir_res_original(j,2)*1e3
+!write(26,100) dist*1.0e9, casimir_res_kk(j,2)*1e3, casimir_res_dr(j,2)*1e3, &
+!casimir_res_mar(j,2)*1e3, casimir_res_pl(j,2)*1e3, casimir_res_ldr(j,2)*1e3, &
+!casimir_res_bb(j,2)*1e3, casimir_res_gauss(j,2)*1e3, casimir_res_original(j,2)*1e3
+
+write(26,100) dist*1.0e9, &
+casimir_res_kk(j,2)*1e3+dec_exp_2007(j,2), &
+casimir_res_dr(j,2)*1e3+dec_exp_2007(j,2), &
+casimir_res_mar(j,2)*1e3+dec_exp_2007(j,2), &
+casimir_res_pl(j,2)*1e3+dec_exp_2007(j,2), &
+casimir_res_ldr(j,2)*1e3+dec_exp_2007(j,2), &
+casimir_res_bb(j,2)*1e3+dec_exp_2007(j,2), &
+casimir_res_gauss(j,2)*1e3+dec_exp_2007(j,2), &
+casimir_res_original(j,2)*1e3+dec_exp_2007(j,2)
 
 !conduct calculations similar with that form Decca paper---------------------------------
 
@@ -580,7 +666,9 @@ casimir_res_dec_dr(j) = 1.602e-19*kb*T/(2*pi*dist**2)*coef1*casimir_res_dec_dr(j
 casimir_res_dec_pl(j) = (casimir_res_dec1(j) + 0.5*sume_pl_dec1) - (casimir_res_dec2(j) + 0.5*sume_pl_dec2)
 casimir_res_dec_pl(j) = 1.602e-19*kb*T/(2*pi*dist**2)*coef1*casimir_res_dec_pl(j)
 
-write(25,100) dist*1.0e9, casimir_res_dec_dr(j)*1.0e15, casimir_res_dec_pl(j)*1.0e15
+write(25,100) dist*1.0e9, &
+casimir_res_dec_dr(j)*1.0e15-dec_exp_2016(j,2), &
+casimir_res_dec_pl(j)*1.0e15-dec_exp_2016(j,2)
 
 
 deallocate(epsAur)
@@ -609,6 +697,7 @@ deallocate(casimir_res_dec1)
 deallocate(casimir_res_dec2)
 deallocate(casimir_res_dec_dr)
 deallocate(casimir_res_dec_pl)
+deallocate(x)
 
 
 
